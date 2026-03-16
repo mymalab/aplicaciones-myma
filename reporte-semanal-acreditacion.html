@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reporte Semanal - Estados de Acreditación</title>
+    <style>
+        /* Reset y estilos base */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #333333;
+            background-color: #f4f4f4;
+            padding: 20px;
+        }
+        
+        /* Contenedor principal */
+        .email-container {
+            max-width: 650px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        /* Header */
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #ffffff;
+            padding: 30px 40px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 28px;
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+        
+        .header .subtitle {
+            font-size: 16px;
+            opacity: 0.95;
+        }
+        
+        .header .period {
+            font-size: 14px;
+            margin-top: 8px;
+            opacity: 0.9;
+        }
+        
+        /* Contenido */
+        .content {
+            padding: 40px;
+        }
+        
+        /* Sección de resumen */
+        .summary-section {
+            margin-bottom: 35px;
+        }
+        
+        .section-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: #2d3748;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #e2e8f0;
+        }
+        
+        /* Tarjetas de estadísticas */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+        
+        .stat-card {
+            background: linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%);
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+            border-left: 4px solid;
+        }
+        
+        .stat-card.pendiente {
+            border-left-color: #f59e0b;
+        }
+        
+        .stat-card.en-proceso {
+            border-left-color: #3b82f6;
+        }
+        
+        .stat-card.completado {
+            border-left-color: #10b981;
+        }
+        
+        .stat-card.cancelado {
+            border-left-color: #ef4444;
+        }
+        
+        .stat-number {
+            font-size: 32px;
+            font-weight: 700;
+            margin-bottom: 5px;
+        }
+        
+        .stat-label {
+            font-size: 14px;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .stat-card.pendiente .stat-number {
+            color: #f59e0b;
+        }
+        
+        .stat-card.en-proceso .stat-number {
+            color: #3b82f6;
+        }
+        
+        .stat-card.completado .stat-number {
+            color: #10b981;
+        }
+        
+        .stat-card.cancelado .stat-number {
+            color: #ef4444;
+        }
+        
+        /* Tabla de proyectos */
+        .projects-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            background-color: #ffffff;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        
+        .projects-table thead {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #ffffff;
+        }
+        
+        .projects-table th {
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .projects-table td {
+            padding: 15px;
+            border-bottom: 1px solid #e2e8f0;
+            font-size: 14px;
+        }
+        
+        .projects-table tbody tr:hover {
+            background-color: #f7fafc;
+        }
+        
+        .projects-table tbody tr:last-child td {
+            border-bottom: none;
+        }
+        
+        /* Badge de estado */
+        .status-badge {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .status-badge.pendiente {
+            background-color: #fef3c7;
+            color: #92400e;
+        }
+        
+        .status-badge.en-proceso {
+            background-color: #dbeafe;
+            color: #1e40af;
+        }
+        
+        .status-badge.completado {
+            background-color: #d1fae5;
+            color: #065f46;
+        }
+        
+        .status-badge.cancelado {
+            background-color: #fee2e2;
+            color: #991b1b;
+        }
+        
+        /* Sección de resumen por responsable */
+        .responsible-section {
+            margin-top: 30px;
+            padding: 20px;
+            background-color: #f7fafc;
+            border-radius: 8px;
+        }
+        
+        .responsible-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        
+        .responsible-item:last-child {
+            border-bottom: none;
+        }
+        
+        .responsible-name {
+            font-weight: 600;
+            color: #2d3748;
+        }
+        
+        .responsible-count {
+            color: #64748b;
+            font-size: 14px;
+        }
+        
+        /* Footer */
+        .footer {
+            background-color: #2d3748;
+            color: #cbd5e0;
+            padding: 25px 40px;
+            text-align: center;
+            font-size: 13px;
+        }
+        
+        .footer a {
+            color: #667eea;
+            text-decoration: none;
+        }
+        
+        /* Responsive */
+        @media only screen and (max-width: 600px) {
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .content {
+                padding: 25px 20px;
+            }
+            
+            .header {
+                padding: 25px 20px;
+            }
+            
+            .projects-table {
+                font-size: 12px;
+            }
+            
+            .projects-table th,
+            .projects-table td {
+                padding: 10px 8px;
+            }
+        }
+        
+        /* Mensaje destacado */
+        .highlight-box {
+            background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+            border-left: 4px solid #f59e0b;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+        }
+        
+        .highlight-box h3 {
+            color: #92400e;
+            font-size: 16px;
+            margin-bottom: 10px;
+        }
+        
+        .highlight-box p {
+            color: #78350f;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <!-- Header -->
+        <div class="header">
+            <h1>📊 Reporte Semanal de Acreditación</h1>
+            <div class="subtitle">Resumen de Estados y Proyectos</div>
+            <div class="period">Semana del {{FECHA_INICIO}} al {{FECHA_FIN}}</div>
+        </div>
+        
+        <!-- Contenido -->
+        <div class="content">
+            <!-- Resumen Ejecutivo -->
+            <div class="summary-section">
+                <h2 class="section-title">📈 Resumen Ejecutivo</h2>
+                
+                <div class="stats-grid">
+                    <div class="stat-card pendiente">
+                        <div class="stat-number">{{TOTAL_PENDIENTES}}</div>
+                        <div class="stat-label">Pendientes</div>
+                    </div>
+                    <div class="stat-card en-proceso">
+                        <div class="stat-number">{{TOTAL_EN_PROCESO}}</div>
+                        <div class="stat-label">En Proceso</div>
+                    </div>
+                    <div class="stat-card completado">
+                        <div class="stat-number">{{TOTAL_COMPLETADOS}}</div>
+                        <div class="stat-label">Completados</div>
+                    </div>
+                    <div class="stat-card cancelado">
+                        <div class="stat-number">{{TOTAL_CANCELADOS}}</div>
+                        <div class="stat-label">Cancelados</div>
+                    </div>
+                </div>
+                
+                <div class="highlight-box">
+                    <h3>⚠️ Atención Requerida</h3>
+                    <p>
+                        Se han identificado <strong>{{TOTAL_PENDIENTES}}</strong> requerimientos pendientes que requieren atención inmediata. 
+                        Se recomienda revisar los proyectos con mayor cantidad de pendientes para evitar retrasos.
+                    </p>
+                </div>
+            </div>
+            
+            <!-- Proyectos Destacados -->
+            <div class="summary-section">
+                <h2 class="section-title">🎯 Proyectos Destacados</h2>
+                
+                <table class="projects-table">
+                    <thead>
+                        <tr>
+                            <th>Código Proyecto</th>
+                            <th>Cliente</th>
+                            <th>Requerimientos</th>
+                            <th>Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Ejemplo de fila - Reemplazar con datos dinámicos -->
+                        <tr>
+                            <td><strong>{{CODIGO_PROYECTO_1}}</strong></td>
+                            <td>{{CLIENTE_1}}</td>
+                            <td>{{TOTAL_REQ_1}}</td>
+                            <td><span class="status-badge {{ESTADO_1}}">{{ESTADO_1}}</span></td>
+                        </tr>
+                        <tr>
+                            <td><strong>{{CODIGO_PROYECTO_2}}</strong></td>
+                            <td>{{CLIENTE_2}}</td>
+                            <td>{{TOTAL_REQ_2}}</td>
+                            <td><span class="status-badge {{ESTADO_2}}">{{ESTADO_2}}</span></td>
+                        </tr>
+                        <tr>
+                            <td><strong>{{CODIGO_PROYECTO_3}}</strong></td>
+                            <td>{{CLIENTE_3}}</td>
+                            <td>{{TOTAL_REQ_3}}</td>
+                            <td><span class="status-badge {{ESTADO_3}}">{{ESTADO_3}}</span></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- Resumen por Responsable -->
+            <div class="summary-section">
+                <h2 class="section-title">👥 Resumen por Responsable</h2>
+                
+                <div class="responsible-section">
+                    <div class="responsible-item">
+                        <span class="responsible-name">Jefe de Proyecto (JPRO)</span>
+                        <span class="responsible-count">{{TOTAL_JPRO}} requerimientos</span>
+                    </div>
+                    <div class="responsible-item">
+                        <span class="responsible-name">Especialista en Prevención de Riesgo (EPR)</span>
+                        <span class="responsible-count">{{TOTAL_EPR}} requerimientos</span>
+                    </div>
+                    <div class="responsible-item">
+                        <span class="responsible-name">Recursos Humanos (RRHH)</span>
+                        <span class="responsible-count">{{TOTAL_RRHH}} requerimientos</span>
+                    </div>
+                    <div class="responsible-item">
+                        <span class="responsible-name">Legal</span>
+                        <span class="responsible-count">{{TOTAL_LEGAL}} requerimientos</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Resumen por Categoría -->
+            <div class="summary-section">
+                <h2 class="section-title">📋 Resumen por Categoría</h2>
+                
+                <div class="responsible-section">
+                    <div class="responsible-item">
+                        <span class="responsible-name">Capacitación</span>
+                        <span class="responsible-count">{{TOTAL_CAPACITACION}} requerimientos</span>
+                    </div>
+                    <div class="responsible-item">
+                        <span class="responsible-name">Salud</span>
+                        <span class="responsible-count">{{TOTAL_SALUD}} requerimientos</span>
+                    </div>
+                    <div class="responsible-item">
+                        <span class="responsible-name">Legal</span>
+                        <span class="responsible-count">{{TOTAL_LEGAL_CAT}} requerimientos</span>
+                    </div>
+                    <div class="responsible-item">
+                        <span class="responsible-name">Otros</span>
+                        <span class="responsible-count">{{TOTAL_OTROS}} requerimientos</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Footer -->
+        <div class="footer">
+            <p><strong>Sistema de Gestión de Solicitudes - MyMA</strong></p>
+            <p>Este es un reporte automático generado semanalmente.</p>
+            <p style="margin-top: 15px;">
+                Para más información, accede al <a href="#">sistema de gestión</a>
+            </p>
+            <p style="margin-top: 10px; font-size: 11px; color: #94a3b8;">
+                © {{AÑO}} MyMA - Todos los derechos reservados
+            </p>
+        </div>
+    </div>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

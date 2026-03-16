@@ -1,0 +1,73 @@
+import { RequestItem, RequestStatus, RequestCategory, RequirementType } from './types';
+
+export const MOCK_REQUESTS: RequestItem[] = [
+  {
+    id: '1',
+    name: 'Juan Pérez Soto',
+    rut: '12.345.678-9',
+    requirement: RequirementType.AUD,
+    category: RequestCategory.Exams,
+    status: RequestStatus.Current,
+    adjudicationDate: '2023-10-15',
+    expirationDate: '2024-10-15',
+  },
+  {
+    id: '2',
+    name: 'María González López',
+    rut: '16.789.012-K',
+    requirement: RequirementType.CTT,
+    category: RequestCategory.Courses,
+    status: RequestStatus.InRenewal,
+    adjudicationDate: '2023-10-20',
+    expirationDate: '2024-04-20',
+  },
+  {
+    id: '3',
+    name: 'Roberto Díaz Muñoz',
+    rut: '9.876.543-2',
+    requirement: RequirementType.CCD,
+    category: RequestCategory.Driving,
+    status: RequestStatus.Expiring,
+    adjudicationDate: '2023-11-01',
+    expirationDate: 'Indefinido',
+  },
+  {
+    id: '4',
+    name: 'Ana Silva Castro',
+    rut: '18.524.369-7',
+    requirement: RequirementType.CEXT,
+    category: RequestCategory.Courses,
+    status: RequestStatus.Current,
+    adjudicationDate: '2023-09-12',
+    expirationDate: '2024-09-12',
+  },
+  {
+    id: '5',
+    name: 'Carlos Ruiz Vega',
+    rut: '15.654.321-0',
+    requirement: RequirementType.EPP,
+    category: RequestCategory.Courses,
+    status: RequestStatus.Expired,
+    adjudicationDate: '-',
+    expirationDate: '-',
+  },
+  {
+    id: '6',
+    name: 'Luisa Fernández',
+    rut: '19.123.456-8',
+    requirement: RequirementType.X4X4,
+    category: RequestCategory.Legal,
+    status: RequestStatus.Current,
+    adjudicationDate: '2023-11-05',
+    expirationDate: '2024-05-05',
+  },
+];
+
+export const REQUIREMENT_ICONS: Record<RequirementType, string> = {
+  [RequirementType.AUD]: 'engineering',
+  [RequirementType.CTT]: 'build',
+  [RequirementType.CCD]: 'folder_shared',
+  [RequirementType.CEXT]: 'science',
+  [RequirementType.EPP]: 'precision_manufacturing',
+  [RequirementType.X4X4]: 'supervisor_account',
+};

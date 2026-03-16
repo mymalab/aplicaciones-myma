@@ -1,0 +1,5 @@
+{
+  "name": "Gestión de Solicitudes",
+  "description": "A responsive dashboard for managing collaborator requests with list and creation views.",
+  "requestFramePermissions": []
+}

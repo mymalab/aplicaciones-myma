@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: gestion-solicitudes-myma
+    env: node
+    region: oregon
+    plan: free
+    buildCommand: corepack enable && corepack prepare pnpm@8.15.0 --activate && pnpm install --frozen-lockfile && pnpm run build -- --force
+    startCommand: node apps/web/server.js
+    healthCheckPath: /
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      - key: ACREDITACION_LEGACY_API_BASE_URL
+        value: http://34.74.6.124
+      - key: ICSARA_API_BASE_URL
+        value: http://34.74.6.124:8080
+      - key: ICSARA_API_PREFIX
+        value: /v1
+      # Variables opcionales - si necesitas usar variables diferentes a las por defecto
+      # - key: ICSARA_API_KEY
+      #   value: your-icsara-api-key
+      # - key: VITE_SUPABASE_URL
+      #   value: your-supabase-url
+      # - key: VITE_SUPABASE_ANON_KEY
+      #   value: your-supabase-anon-key

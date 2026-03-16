@@ -1,0 +1,376 @@
+<!-- Condiciones Laborales -->
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Solicitud de Acreditación</title>
+</head>
+
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f5f5f5;">
+  <div style="max-width: 640px; margin: 0 auto; background-color: #ffffff; border: 1px solid #e5e5e5; border-radius: 8px; overflow: hidden;">
+
+    <!-- Header -->
+    <div style="background-color: #0f766e; padding: 16px 24px;">
+      <h1 style="margin: 0; font-size: 18px; font-weight: bold; color: #ffffff;">Solicitud de Acreditación</h1>
+      <p style="margin: 4px 0 0 0; font-size: 12px; color: rgba(255,255,255,0.8);">Detalle completo del formulario de acreditación</p>
+    </div>
+
+    <!-- Info Bar -->
+    <div style="background-color: #f0f9ff; padding: 8px 16px; border-bottom: 1px solid #e5e5e5; display: flex; justify-content: space-between; align-items: center;">
+      <span style="font-size: 14px; font-weight: 600; color: #0f766e;">📄 {{ $json.body.record.codigo_proyecto }}</span>
+      <span style="font-size: 12px; color: #6b7280;">Fecha: {{ $json.body.record.created_at }}</span>
+    </div>
+
+    <!-- Identificación de la Solicitud -->
+    <div style="margin-bottom: 16px;">
+      <div style="background-color: #f8fafc; padding: 8px 16px; border-bottom: 1px solid #e5e5e5;">
+        <h3 style="margin: 0; font-size: 14px; font-weight: 600; color: #0f766e;">📄 Identificación de la Solicitud</h3>
+      </div>
+
+      <div style="padding: 12px 16px;">
+        <table style="width: 100%; border-collapse: collapse;">
+          <tr>
+            <td style="padding: 4px 8px 4px 0; width: 50%; vertical-align: top;">
+              <span style="font-size: 10px; color: #6b7280; text-transform: uppercase;">Código de Proyecto</span>
+              <p style="margin: 2px 0 0 0; font-size: 14px; font-weight: 500;">{{ $json.body.record.codigo_proyecto }}</p>
+            </td>
+
+            <td style="padding: 4px 0 4px 8px; width: 50%; vertical-align: top;">
+              <span style="font-size: 10px; color: #6b7280; text-transform: uppercase;">Requisito</span>
+              <p style="margin: 2px 0 0 0; font-size: 14px; font-weight: 500;">{{ $json.body.record.requisito }}</p>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding: 8px 8px 4px 0; vertical-align: top;">
+              <span style="font-size: 10px; color: #6b7280; text-transform: uppercase;">Fecha de Solicitud</span>
+              <p style="margin: 2px 0 0 0; font-size: 14px; font-weight: 500;">{{ $json.body.record.fecha_solicitud }}</p>
+            </td>
+
+            <td style="padding: 8px 0 4px 8px; vertical-align: top;">
+              <span style="font-size: 10px; color: #6b7280; text-transform: uppercase;">Fecha Reunión de Arranque</span>
+              <p style="margin: 2px 0 0 0; font-size: 14px; font-weight: 500;">{{ $json.body.record.fecha_reunion_arranque }}</p>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding: 8px 8px 4px 0; vertical-align: top;">
+              <span style="font-size: 10px; color: #6b7280; text-transform: uppercase;">Nombre de Solicitante</span>
+              <p style="margin: 2px 0 0 0; font-size: 14px; font-weight: 500;">{{ $json.body.record.nombre_solicitante }}</p>
+            </td>
+
+            <td style="padding: 8px 0 4px 8px; vertical-align: top;">
+              <span style="font-size: 10px; color: #6b7280; text-transform: uppercase;">Fecha de Inicio de Terreno</span>
+              <p style="margin: 2px 0 0 0; font-size: 14px; font-weight: 500;">{{ $json.body.record.fecha_inicio_terreno }}</p>
+            </td>
+          </tr>
+        </table>
+      </div>
+    </div>
+
+    <!-- Cliente y Contrato -->
+    <div style="margin-bottom: 16px;">
+      <div style="background-color: #f8fafc; padding: 8px 16px; border-bottom: 1px solid #e5e5e5;">
+        <h3 style="margin: 0; font-size: 14px; font-weight: 600; color: #0f766e;">🏢 Cliente y Contrato</h3>
+      </div>
+
+      <div style="padding: 12px 16px;">
+        <div style="margin-bottom: 8px;">
+          <span style="font-size: 10px; color: #6b7280; text-transform: uppercase;">Nombre de Cliente</span>
+          <p style="margin: 2px 0 0 0; font-size: 14px; font-weight: 500;">{{ $json.body.record.nombre_cliente }}</p>
+        </div>
+
+        <table style="width: 100%; border-collapse: collapse;">
+          <tr>
+            <td style="padding: 4px 8px 4px 0; width: 50%; vertical-align: top;">
+              <span style="font-size: 10px; color: #6b7280; text-transform: uppercase;">Contacto del Cliente</span>
+              <p style="margin: 2px 0 0 0; font-size: 14px; font-weight: 500;">{{ $json.body.record.nombre_contacto_cliente }}</p>
+            </td>
+
+            <td style="padding: 4px 0 4px 8px; width: 50%; vertical-align: top;">
+              <span style="font-size: 10px; color: #6b7280; text-transform: uppercase;">Correo Electrónico</span>
+              <p style="margin: 2px 0 0 0; font-size: 14px; font-weight: 500;">{{ $json.body.record.email_contacto_cliente }}</p>
+            </td>
+          </tr>
+        </table>
+      </div>
+    </div>
+
+    <!-- Gestión Interna MYMA -->
+    <div style="margin-bottom: 16px;">
+      <div style="background-color: #f8fafc; padding: 8px 16px; border-bottom: 1px solid #e5e5e5;">
+        <h3 style="margin: 0; font-size: 14px; font-weight: 600; color: #0f766e;">📁 Gestión Interna MYMA</h3>
+      </div>
+
+      <div style="padding: 12px 16px;">
+        <table style="width: 100%; border-collapse: collapse;">
+          <tr>
+            <td style="padding: 4px 8px 4px 0; width: 33%; vertical-align: top;">
+              <span style="font-size: 10px; color: #6b7280; text-transform: uppercase;">Jefe de Proyectos</span>
+              <p style="margin: 2px 0 0 0; font-size: 14px; font-weight: 500;">{{ $json.body.record.jefe_proyectos_myma }}</p>
+            </td>
+
+            <td style="padding: 4px 8px; width: 33%; vertical-align: top;">
+              <span style="font-size: 10px; color: #6b7280; text-transform: uppercase;">Admin. de Contrato</span>
+              <p style="margin: 2px 0 0 0; font-size: 14px; font-weight: 500;">{{ $json.body.record.admin_contrato_myma }}</p>
+            </td>
+
+            <td style="padding: 4px 0 4px 8px; width: 33%; vertical-align: top;">
+              <span style="font-size: 10px; color: #6b7280; text-transform: uppercase;">Encargado Seguimiento</span>
+              <p style="margin: 2px 0 0 0; font-size: 14px; font-weight: 500;">{{ $json.body.record.encargado_seguimiento_acreditacion }}</p>
+            </td>
+          </tr>
+        </table>
+      </div>
+    </div>
+
+    <!-- Acreditación MyMA -->
+    <div style="margin-bottom: 16px;">
+      <div style="background-color: #f8fafc; padding: 8px 16px; border-bottom: 1px solid #e5e5e5;">
+        <h3 style="margin: 0; font-size: 14px; font-weight: 600; color: #0f766e;">🛡️ Acreditación MyMA</h3>
+      </div>
+
+      <div style="padding: 12px 16px;">
+        <span style="font-size: 14px; color: #374151;">¿Se requiere acreditar empresa?</span>
+
+        <span style="display: inline-block; margin-left: 8px; padding: 2px 8px; background-color: #d1fae5; color: #047857; font-size: 12px; font-weight: 500; border-radius: 4px;">
+          {{ $json.body.record.requiere_acreditar_empresa ? "Sí" : "No" }}
+        </span>
+      </div>
+    </div>
+
+    <!-- Información del Contrato -->
+    <div style="margin-bottom: 16px;">
+      <div style="background-color: #f8fafc; padding: 8px 16px; border-bottom: 1px solid #e5e5e5;">
+        <h3 style="margin: 0; font-size: 14px; font-weight: 600; color: #0f766e;">📄 Información del Contrato</h3>
+      </div>
+
+      <div style="padding: 12px 16px;">
+        <table style="width: 100%; border-collapse: collapse;">
+          <tr>
+            <td style="padding: 4px 8px 4px 0; width: 50%; vertical-align: top;">
+              <span style="font-size: 10px; color: #6b7280; text-transform: uppercase;">Nombre del Contrato</span>
+              <p style="margin: 2px 0 0 0; font-size: 14px; font-weight: 500;">{{ $json.body.record.nombre_contrato }}</p>
+            </td>
+
+            <td style="padding: 4px 0 4px 8px; width: 50%; vertical-align: top;">
+              <span style="font-size: 10px; color: #6b7280; text-transform: uppercase;">Número de Contrato</span>
+              <p style="margin: 2px 0 0 0; font-size: 14px; font-weight: 500;">{{ $json.body.record.numero_contrato }}</p>
+            </td>
+          </tr>
+        </table>
+
+        <div style="margin-top: 8px;">
+          <span style="font-size: 10px; color: #6b7280; text-transform: uppercase;">Administrador de Contrato</span>
+          <p style="margin: 2px 0 0 0; font-size: 14px; font-weight: 500;">{{ $json.body.record.administrador_contrato }}</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Trabajadores MYMA -->
+    <div style="margin-bottom: 16px;">
+      <div style="background-color: #f8fafc; padding: 8px 16px; border-bottom: 1px solid #e5e5e5;">
+        <h3 style="margin: 0; font-size: 14px; font-weight: 600; color: #0f766e;">👥 Información de Trabajadores MYMA</h3>
+      </div>
+
+      <div style="padding: 12px 16px;">
+        <p style="margin: 0 0 8px 0; font-size: 12px; color: #6b7280;">
+          Total trabajadores: <strong style="color: #111827;">{{ $json.body.record.cantidad_trabajadores_myma }}</strong>
+        </p>
+      </div>
+    </div>
+
+    <div style="margin-bottom: 16px;">
+        <div style="background-color: #f8fafc; padding: 8px 16px; border-bottom: 1px solid #e5e5e5;">
+          <h3 style="margin: 0; font-size: 14px; font-weight: 600; color: #0f766e;">🕐 Condiciones Laborales</h3>
+        </div>
+      
+        <div style="padding: 12px 16px;">
+          <table style="width: 100%; border-collapse: collapse;">
+            {{
+              ($json.body.record.horarios_trabajo ?? [])
+                .map(h => `
+                  <tr>
+                    <td style="padding: 4px 0; font-size: 14px;">
+                      <strong>${h?.dias ?? ''}</strong>:
+                      <span style="color: #6b7280;">${h?.horario ?? ''}</span>
+                    </td>
+                  </tr>
+                `)
+                .join('')
+            }}
+          </table>
+        </div>
+      </div>
+
+    <!-- Vehículos MYMA -->
+    <div style="margin-bottom: 16px;">
+      <div style="background-color: #f8fafc; padding: 8px 16px; border-bottom: 1px solid #e5e5e5;">
+        <h3 style="margin: 0; font-size: 14px; font-weight: 600; color: #0f766e;">🚗 Información de Vehículos MYMA</h3>
+      </div>
+
+      <div style="padding: 12px 16px;">
+        <p style="margin: 0 0 8px 0; font-size: 12px; color: #6b7280;">
+          Cantidad de vehículos: <strong style="color: #111827;">{{ $json.body.record.cantidad_vehiculos }}</strong>
+        </p>
+
+        <!-- Nota:
+             placas_patente es un array. Aquí mostramos hasta 3 celdas (0,1,2) para mantener tu layout. -->
+        <table style="width: 100%; border-collapse: collapse;">
+          <tr>
+            <td style="padding: 8px; width: 33%; vertical-align: top; border: 1px solid #e5e5e5; border-radius: 4px; background-color: #f9fafb;">
+              <p style="margin: 0; font-size: 10px; color: #6b7280;">Vehículo 1</p>
+              <p style="margin: 2px 0; font-size: 14px; font-weight: bold; font-family: monospace;">{{ $json.body.record.placas_patente?.[0] }}</p>
+              <p style="margin: 0; font-size: 12px; color: #6b7280;">&nbsp;</p>
+            </td>
+
+            <td style="padding: 8px; width: 33%; vertical-align: top; border: 1px solid #e5e5e5; border-radius: 4px; background-color: #f9fafb;">
+              <p style="margin: 0; font-size: 10px; color: #6b7280;">Vehículo 2</p>
+              <p style="margin: 2px 0; font-size: 14px; font-weight: bold; font-family: monospace;">{{ $json.body.record.placas_patente?.[1] }}</p>
+              <p style="margin: 0; font-size: 12px; color: #6b7280;">&nbsp;</p>
+            </td>
+
+            <td style="padding: 8px; width: 33%; vertical-align: top; border: 1px solid #e5e5e5; border-radius: 4px; background-color: #f9fafb;">
+              <p style="margin: 0; font-size: 10px; color: #6b7280;">Vehículo 3</p>
+              <p style="margin: 2px 0; font-size: 14px; font-weight: bold; font-family: monospace;">{{ $json.body.record.placas_patente?.[2] }}</p>
+              <p style="margin: 0; font-size: 12px; color: #6b7280;">&nbsp;</p>
+            </td>
+          </tr>
+        </table>
+      </div>
+    </div>
+
+    <!-- Acreditación Contratista -->
+    <div style="margin-bottom: 16px;">
+      <div style="background-color: #fffbeb; padding: 8px 16px; border-bottom: 1px solid #e5e5e5;">
+        <h3 style="margin: 0; font-size: 14px; font-weight: 600; color: #d97706;">✓ Acreditación Contratista</h3>
+      </div>
+
+      <div style="padding: 12px 16px;">
+        <span style="font-size: 14px; color: #374151;">¿Se requiere acreditar a contratista?</span>
+
+        <span style="display: inline-block; margin-left: 8px; padding: 2px 8px; background-color: #d1fae5; color: #047857; font-size: 12px; font-weight: 500; border-radius: 4px;">
+          {{ $json.body.record.requiere_acreditar_contratista ? "Sí" : "No" }}
+        </span>
+      </div>
+    </div>
+
+    <!-- Información del Contrato Contratista -->
+    <div style="margin-bottom: 16px;">
+      <div style="background-color: #fffbeb; padding: 8px 16px; border-bottom: 1px solid #e5e5e5;">
+        <h3 style="margin: 0; font-size: 14px; font-weight: 600; color: #d97706;">📄 Información del Contrato Contratista</h3>
+      </div>
+
+      <div style="padding: 12px 16px;">
+        <table style="width: 100%; border-collapse: collapse;">
+          <tr>
+            <td style="padding: 4px 8px 4px 0; width: 50%; vertical-align: top;">
+              <span style="font-size: 10px; color: #6b7280; text-transform: uppercase;">Modalidad de Contrato</span>
+              <p style="margin: 2px 0 0 0; font-size: 14px; font-weight: 500;">{{ $json.body.record.modalidad_contrato_contratista }}</p>
+            </td>
+
+            <td style="padding: 4px 0 4px 8px; width: 50%; vertical-align: top;">
+              <span style="font-size: 10px; color: #6b7280; text-transform: uppercase;">Razón Social de Contratista</span>
+              <p style="margin: 2px 0 0 0; font-size: 14px; font-weight: 500;">{{ $json.body.record.razon_social_contratista }}</p>
+            </td>
+          </tr>
+        </table>
+      </div>
+    </div>
+
+    <!-- Responsable Contratista -->
+    <div style="margin-bottom: 16px;">
+      <div style="background-color: #fffbeb; padding: 8px 16px; border-bottom: 1px solid #e5e5e5;">
+        <h3 style="margin: 0; font-size: 14px; font-weight: 600; color: #d97706;">👤 Responsable de la Solicitud Contratista</h3>
+      </div>
+
+      <div style="padding: 12px 16px;">
+        <table style="width: 100%; border-collapse: collapse;">
+          <tr>
+            <td style="padding: 4px 8px 4px 0; width: 33%; vertical-align: top;">
+              <span style="font-size: 10px; color: #6b7280; text-transform: uppercase;">Nombre</span>
+              <p style="margin: 2px 0 0 0; font-size: 14px; font-weight: 500;">{{ $json.body.record.nombre_responsable_contratista }}</p>
+            </td>
+
+            <td style="padding: 4px 8px; width: 33%; vertical-align: top;">
+              <span style="font-size: 10px; color: #6b7280; text-transform: uppercase;">Teléfono</span>
+              <p style="margin: 2px 0 0 0; font-size: 14px; font-weight: 500;">{{ $json.body.record.telefono_responsable_contratista }}</p>
+            </td>
+
+            <td style="padding: 4px 0 4px 8px; width: 33%; vertical-align: top;">
+              <span style="font-size: 10px; color: #6b7280; text-transform: uppercase;">Email</span>
+              <p style="margin: 2px 0 0 0; font-size: 14px; font-weight: 500;">{{ $json.body.record.email_responsable_contratista }}</p>
+            </td>
+          </tr>
+        </table>
+      </div>
+    </div>
+
+    <!-- Trabajadores Contratista -->
+    <div style="margin-bottom: 16px;">
+      <div style="background-color: #fffbeb; padding: 8px 16px; border-bottom: 1px solid #e5e5e5;">
+        <h3 style="margin: 0; font-size: 14px; font-weight: 600; color: #d97706;">👥 Información de Trabajadores Contratista</h3>
+      </div>
+
+      <div style="padding: 12px 16px;">
+        <p style="margin: 0; font-size: 12px; color: #6b7280;">
+          Total trabajadores: <strong style="color: #111827;">{{ $json.body.record.cantidad_trabajadores_contratista }}</strong>
+        </p>
+      </div>
+    </div>
+
+    <!-- Vehículos Contratista -->
+    <div style="margin-bottom: 16px;">
+      <div style="background-color: #fffbeb; padding: 8px 16px; border-bottom: 1px solid #e5e5e5;">
+        <h3 style="margin: 0; font-size: 14px; font-weight: 600; color: #d97706;">🚚 Información de Vehículos Contratista</h3>
+      </div>
+
+      <div style="padding: 12px 16px;">
+        <p style="margin: 0 0 8px 0; font-size: 12px; color: #6b7280;">
+          Cantidad de vehículos: <strong style="color: #111827;">{{ $json.body.record.cantidad_vehiculos_contratista }}</strong>
+        </p>
+
+        <!-- placas_vehiculos_contratista es un array -->
+        <table style="width: 100%; border-collapse: collapse;">
+          <tr>
+            <td style="padding: 8px; width: 50%; vertical-align: top; border: 1px solid #e5e5e5; border-radius: 4px; background-color: #f9fafb;">
+              <p style="margin: 0; font-size: 10px; color: #6b7280;">Vehículo 1</p>
+              <p style="margin: 2px 0; font-size: 14px; font-weight: bold; font-family: monospace;">{{ $json.body.record.placas_vehiculos_contratista?.[0] }}</p>
+              <p style="margin: 0; font-size: 12px; color: #6b7280;">&nbsp;</p>
+            </td>
+
+            <td style="padding: 8px; width: 50%; vertical-align: top; border: 1px solid #e5e5e5; border-radius: 4px; background-color: #f9fafb;">
+              <p style="margin: 0; font-size: 10px; color: #6b7280;">Vehículo 2</p>
+              <p style="margin: 2px 0; font-size: 14px; font-weight: bold; font-family: monospace;">{{ $json.body.record.placas_vehiculos_contratista?.[1] }}</p>
+              <p style="margin: 0; font-size: 12px; color: #6b7280;">&nbsp;</p>
+            </td>
+          </tr>
+        </table>
+      </div>
+    </div>
+
+    <!-- SST -->
+    <div style="margin-bottom: 16px;">
+      <div style="background-color: #ecfdf5; padding: 8px 16px; border-bottom: 1px solid #e5e5e5;">
+        <h3 style="margin: 0; font-size: 14px; font-weight: 600; color: #059669;">🛡️ Seguridad y Salud en el Trabajo (SST)</h3>
+      </div>
+
+      <div style="padding: 12px 16px;">
+        <span style="font-size: 14px; color: #374151;">¿Se registró actividad en la planilla SST terreno?</span>
+
+        <span style="display: inline-block; margin-left: 8px; padding: 2px 8px; background-color: #d1fae5; color: #047857; font-size: 12px; font-weight: 500; border-radius: 4px;">
+          {{ $json.body.record.registro_sst_terreno ? "Sí" : "No" }}
+        </span>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div style="background-color: #f8fafc; padding: 12px 16px; border-top: 1px solid #e5e5e5; text-align: center;">
+      <p style="margin: 0; font-size: 10px; color: #6b7280;">Este correo es informativo y contiene el detalle completo de la solicitud de acreditación.</p>
+      <p style="margin: 4px 0 0 0; font-size: 10px; color: #6b7280;">MYMA © 2026 — Sistema de Gestión de Acreditaciones</p>
+    </div>
+
+  </div>
+</body>
+</html>  

@@ -1,0 +1,266 @@
+/* Estilos base y optimizaciones para móvil */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Animaciones para entrada de elementos */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideInFromTop {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideInFromLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideInFromRight {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.animate-slide-in-right {
+  animation: slideInFromRight 0.3s ease-out;
+}
+
+.animate-slide-in {
+  animation: slideInFromRight 0.3s ease-out;
+}
+
+.animate-in {
+  animation: fadeIn 0.2s ease-in-out;
+}
+
+.fade-in {
+  animation: fadeIn 0.2s ease-in-out;
+}
+
+.slide-in-from-top-2 {
+  animation: slideInFromTop 0.2s ease-out;
+}
+
+/* Mejoras para inputs en móvil */
+input[type="text"],
+input[type="date"],
+select,
+textarea {
+  font-size: 16px !important; /* Previene zoom en iOS */
+}
+
+/* Mejoras para el scroll en móvil */
+.overflow-x-auto {
+  -webkit-overflow-scrolling: touch;
+  /* Hacer la barra de scroll horizontal más gruesa y cómoda */
+  scrollbar-width: auto;
+}
+
+.overflow-x-auto::-webkit-scrollbar {
+  /* Grosor de la barra de scroll horizontal */
+  height: 14px;
+}
+
+.overflow-x-auto::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+.overflow-x-auto::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+.overflow-x-auto::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Transiciones suaves para el sidebar */
+aside {
+  transition: transform 0.3s ease-in-out;
+}
+
+/* Mejora de accesibilidad táctil en móvil */
+@media (max-width: 1024px) {
+  button,
+  a {
+    min-height: 44px; /* Tamaño mínimo recomendado para touch targets */
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Asegurar que los botones pequeños también tengan buen tamaño táctil */
+  button.p-1\.5,
+  button.p-2 {
+    min-height: 40px;
+    min-width: 40px;
+  }
+}
+
+/* Estilos para evitar el rebote en iOS */
+body {
+  overscroll-behavior-y: none;
+}
+
+/* Mejora de rendimiento en animaciones */
+.transition-transform,
+.transition-colors,
+.transition-all {
+  will-change: transform;
+}
+
+/* Estilos para el overlay del sidebar en móvil */
+.fixed.inset-0.bg-black\/50 {
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
+/* Mejoras para la tabla en desktop */
+@media (min-width: 1024px) {
+  table {
+    table-layout: auto;
+  }
+  
+  th, td {
+    white-space: nowrap;
+  }
+}
+
+/* Estilos para mejorar la legibilidad de las tarjetas en móvil */
+@media (max-width: 1023px) {
+  .bg-white.rounded-xl {
+    box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  }
+}
+
+/* Animación para las cards en móvil */
+@media (max-width: 1023px) {
+  .lg\:hidden > div {
+    animation: slideInFromLeft 0.3s ease-out;
+  }
+  
+  .lg\:hidden > div:nth-child(2) {
+    animation-delay: 0.05s;
+  }
+  
+  .lg\:hidden > div:nth-child(3) {
+    animation-delay: 0.1s;
+  }
+}
+
+/* Mejora del estado focus para accesibilidad */
+input:focus,
+select:focus,
+textarea:focus,
+button:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.1);
+}
+
+/* Prevenir selección de texto en elementos interactivos */
+button,
+.material-symbols-outlined {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Configuración para iconos más cuadrados */
+.material-symbols-outlined {
+  font-variation-settings:
+    'FILL' 0,
+    'wght' 400,
+    'GRAD' 0,
+    'opsz' 24;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-feature-settings: 'liga';
+  font-feature-settings: 'liga';
+  aspect-ratio: 1 / 1;
+  width: 1em;
+  height: 1em;
+}
+
+/* Estilo para el header fijo en móvil */
+@media (max-width: 1023px) {
+  .lg\:pt-0 {
+    padding-top: 60px;
+  }
+}
+
+/* Ajustes para mejorar el rendimiento de las transiciones */
+* {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Estilos para mejorar la visibilidad del placeholder en inputs */
+::placeholder {
+  color: #9ca3af;
+  opacity: 1;
+}
+
+/* Mejora de contraste en estados hover para accesibilidad */
+@media (hover: hover) {
+  button:hover {
+    transition: all 0.2s ease-in-out;
+  }
+}
+
+/* Estilos específicos para Safari iOS */
+@supports (-webkit-touch-callout: none) {
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
