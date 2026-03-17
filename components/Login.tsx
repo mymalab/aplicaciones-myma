@@ -64,11 +64,28 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
       const isLocalHost =
         window.location.hostname === 'localhost' ||
         window.location.hostname === '127.0.0.1';
-      const redirectUrl = isLocalHost
-        ? `${window.location.origin}/auth/callback`
-        : configuredRedirectUrl && configuredRedirectUrl.length > 0
-          ? configuredRedirectUrl
-          : `${window.location.origin}/auth/callback`;
+      const currentCallbackUrl = `${window.location.origin}/auth/callback`;
+      let redirectUrl = currentCallbackUrl;
+
+      // En producción ignoramos un redirect mal configurado que apunte a localhost
+      if (!isLocalHost && configuredRedirectUrl && configuredRedirectUrl.length > 0) {
+        try {
+          const configuredHost = new URL(configuredRedirectUrl).hostname;
+          const configuredIsLocalHost =
+            configuredHost === 'localhost' || configuredHost === '127.0.0.1';
+
+          if (!configuredIsLocalHost) {
+            redirectUrl = configuredRedirectUrl;
+          } else {
+            console.warn(
+              'VITE_AUTH_REDIRECT_URL apunta a localhost en producción; se usará',
+              currentCallbackUrl
+            );
+          }
+        } catch {
+          console.warn('VITE_AUTH_REDIRECT_URL inválida; se usará', currentCallbackUrl);
+        }
+      }
 
       console.log('URL de redirección OAuth:', redirectUrl);
 
