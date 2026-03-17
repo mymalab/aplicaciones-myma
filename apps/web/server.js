@@ -10,8 +10,12 @@ const __dirname = dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const normalizeBaseUrl = (baseUrl) => `${baseUrl ?? ''}`.trim().replace(/\/+$/, '');
 const ACREDITACION_LEGACY_API_BASE_URL =
-  process.env.ACREDITACION_LEGACY_API_BASE_URL || 'http://34.74.6.124';
+  normalizeBaseUrl(process.env.ACREDITACION_LEGACY_API_BASE_URL || 'http://34.74.6.124');
+const ACREDITACION_ASIGNAR_FOLDER_API_BASE_URL = normalizeBaseUrl(
+  process.env.ACREDITACION_ASIGNAR_FOLDER_API_BASE_URL || ACREDITACION_LEGACY_API_BASE_URL,
+);
 const ICSARA_API_BASE_URL =
   process.env.ICSARA_API_BASE_URL || 'http://34.74.6.124:8080';
 const ICSARA_API_PREFIX =
@@ -29,11 +33,19 @@ app.use(express.json({ limit: '300mb' }));
 console.log(
   `[icsara] base=${ICSARA_API_BASE_URL} prefix=${ICSARA_API_PREFIX} apiKeyConfigured=${Boolean(ICSARA_API_KEY)}`,
 );
+console.log(
+  `[acreditacion] legacyBase=${ACREDITACION_LEGACY_API_BASE_URL} asignarFolderBase=${ACREDITACION_ASIGNAR_FOLDER_API_BASE_URL}`,
+);
 
-const proxyLegacyAcreditacionPost = async (req, res, upstreamPath) => {
+const proxyLegacyAcreditacionPost = async (
+  req,
+  res,
+  upstreamPath,
+  { baseUrl = ACREDITACION_LEGACY_API_BASE_URL } = {},
+) => {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
-  const endpoint = `${ACREDITACION_LEGACY_API_BASE_URL}${upstreamPath}`;
+  const endpoint = `${baseUrl}${upstreamPath}`;
   const requestStartedAt = Date.now();
 
   try {
@@ -146,7 +158,9 @@ app.post('/api/acreditacion/carpetas/crear', async (req, res) => {
 });
 
 app.post('/api/acreditacion/asignar-folder', async (req, res) => {
-  await proxyLegacyAcreditacionPost(req, res, '/asignar-folder');
+  await proxyLegacyAcreditacionPost(req, res, '/asignar-folder', {
+    baseUrl: ACREDITACION_ASIGNAR_FOLDER_API_BASE_URL,
+  });
 });
 
 app.post('/api/acreditacion/documentos/subir', async (req, res) => {

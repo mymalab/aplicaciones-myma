@@ -14,6 +14,10 @@ services:
         value: 3000
       - key: ACREDITACION_LEGACY_API_BASE_URL
         value: http://34.74.6.124
+      # Upstream dedicado para POST /api/acreditacion/asignar-folder (opcional).
+      # Si no se define, usa ACREDITACION_LEGACY_API_BASE_URL.
+      # - key: ACREDITACION_ASIGNAR_FOLDER_API_BASE_URL
+      #   value: https://tu-api-asignar-folder.onrender.com
       - key: ICSARA_API_BASE_URL
         value: http://34.74.6.124:8080
       - key: ICSARA_API_PREFIX
