@@ -60,9 +60,17 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
       setError(null);
 
       // Redirigir al callback de autenticación después de OAuth
-      const redirectUrl = `${window.location.origin}/auth/callback`;
-      
-      console.log('🔗 URL de redirección:', redirectUrl);
+      const configuredRedirectUrl = import.meta.env.VITE_AUTH_REDIRECT_URL?.trim();
+      const isLocalHost =
+        window.location.hostname === 'localhost' ||
+        window.location.hostname === '127.0.0.1';
+      const redirectUrl = isLocalHost
+        ? `${window.location.origin}/auth/callback`
+        : configuredRedirectUrl && configuredRedirectUrl.length > 0
+          ? configuredRedirectUrl
+          : `${window.location.origin}/auth/callback`;
+
+      console.log('URL de redirección OAuth:', redirectUrl);
 
       // Iniciar sesión con Google
       const { data, error: signInError } = await supabase.auth.signInWithOAuth({
@@ -212,4 +220,3 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
 };
 
 export default Login;
-
