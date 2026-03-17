@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Proveedor, TipoProveedor, Especialidad, Clasificacion } from '../types';
 import { AreaId } from '@contracts/areas';
@@ -591,18 +591,19 @@ const ProveedoresActuales: React.FC = () => {
               <table className="w-full">
                 <thead className="bg-gradient-to-r from-gray-50 to-blue-50 border-b-2 border-gray-200">
                   <tr>
-                    <th className="text-left py-4 px-4 text-sm font-semibold text-gray-700 bg-gradient-to-r from-gray-50 to-blue-50 w-[132px] min-w-[132px]">
-                      INFO ACTUALIZADA
-                    </th>
                     <th className="sticky left-0 z-20 text-left py-4 px-6 text-sm font-semibold text-gray-700 bg-gradient-to-r from-gray-50 to-blue-50">
                       NOMBRE / RAZON SOCIAL
+                    </th>
+                    <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700">
+                      CLASIFICACION
                     </th>
                     <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700">RUT / TIPO</th>
                     <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700">ESPECIALIDAD</th>
                     <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700">CONTACTO</th>
-                    <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700">ESTADO</th>
+                    <th className="text-left py-4 px-4 text-sm font-semibold text-gray-700 bg-gradient-to-r from-gray-50 to-blue-50 w-[132px] min-w-[132px]">
+                      ESTADO
+                    </th>
                     <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700">EVALUACION</th>
-                    <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700">CLASIFICACION</th>
                     <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700"># EVALUACIONES</th>
                     <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700"># A</th>
                     <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700"># B</th>
@@ -617,19 +618,6 @@ const ProveedoresActuales: React.FC = () => {
                       onClick={() => navigate(getAreaPath(`actuales/${proveedor.id}`))}
                       className="group border-b border-gray-100 hover:bg-blue-50 cursor-pointer transition-colors"
                     >
-                      <td className="py-4 px-4 bg-white group-hover:bg-blue-50 w-[132px] min-w-[132px]">
-                        <div className="flex items-center justify-center">
-                          {isInformacionActualizada(proveedor.cruce) ? (
-                            <span className="material-symbols-outlined text-xl text-green-600" title="Informacion actualizada">
-                              check_circle
-                            </span>
-                          ) : (
-                            <span className="material-symbols-outlined text-xl text-amber-500" title="Informacion no actualizada">
-                              warning
-                            </span>
-                          )}
-                        </div>
-                      </td>
                       <td className="sticky left-0 z-10 py-4 px-6 bg-white group-hover:bg-blue-50">
                         <div className="flex flex-col">
                           <span className="font-medium text-[#111318]">{proveedor.nombre}</span>
@@ -637,6 +625,19 @@ const ProveedoresActuales: React.FC = () => {
                             <span className="text-sm text-gray-500">{proveedor.razonSocial}</span>
                           )}
                         </div>
+                      </td>
+                      <td className="py-4 px-6">
+                        {proveedor.tieneServiciosEjecutados ? (
+                          <div
+                            className={`w-8 h-8 rounded-full flex items-center justify-center font-semibold text-sm ${getClasificacionColor(
+                              proveedor.clasificacion
+                            )}`}
+                          >
+                            {proveedor.clasificacion}
+                          </div>
+                        ) : (
+                          <span className="text-sm text-gray-400">-</span>
+                        )}
                       </td>
                       <td className="py-4 px-6">
                         <div className="flex flex-col">
@@ -696,16 +697,18 @@ const ProveedoresActuales: React.FC = () => {
                           </button>
                         </div>
                       </td>
-                      <td className="py-4 px-6">
-                        <span
-                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${
-                            proveedor.tieneServiciosEjecutados
-                              ? 'bg-green-100 text-green-700 border-green-200'
-                              : 'bg-gray-100 text-gray-700 border-gray-200'
-                          }`}
-                        >
-                          {proveedor.tieneServiciosEjecutados ? 'Con servicios ejecutados' : 'Sin servicios ejecutados'}
-                        </span>
+                      <td className="py-4 px-4 bg-white group-hover:bg-blue-50 w-[132px] min-w-[132px]">
+                        <div className="flex items-center justify-center">
+                          {isInformacionActualizada(proveedor.cruce) ? (
+                            <span className="material-symbols-outlined text-xl text-green-600" title="Informacion actualizada">
+                              check_circle
+                            </span>
+                          ) : (
+                            <span className="material-symbols-outlined text-xl text-amber-500" title="Informacion no actualizada">
+                              warning
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="py-4 px-6">
                         {proveedor.tieneServiciosEjecutados ? (
@@ -719,19 +722,6 @@ const ProveedoresActuales: React.FC = () => {
                             <span className="text-sm font-medium text-[#111318] min-w-[40px]">
                               {proveedor.evaluacion}%
                             </span>
-                          </div>
-                        ) : (
-                          <span className="text-sm text-gray-400">-</span>
-                        )}
-                      </td>
-                      <td className="py-4 px-6">
-                        {proveedor.tieneServiciosEjecutados ? (
-                          <div
-                            className={`w-8 h-8 rounded-full flex items-center justify-center font-semibold text-sm ${getClasificacionColor(
-                              proveedor.clasificacion
-                            )}`}
-                          >
-                            {proveedor.clasificacion}
                           </div>
                         ) : (
                           <span className="text-sm text-gray-400">-</span>
@@ -918,7 +908,6 @@ const ProveedoresActuales: React.FC = () => {
 };
 
 export default ProveedoresActuales;
-
 
 
 

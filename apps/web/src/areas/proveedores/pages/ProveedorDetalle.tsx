@@ -879,7 +879,7 @@ const ProveedorDetalle: React.FC = () => {
             <div>
               <h2 className="text-xl font-bold text-[#111318] mb-1">Servicios Ejecutados</h2>
               <p className="text-sm text-gray-500">
-                Listado de servicios evaluados y realizados por este proveedor.
+                Servicios realizados por el proveedor.
               </p>
             </div>
           </div>
@@ -970,7 +970,15 @@ const ProveedorDetalle: React.FC = () => {
                               evaluacionData: evaluacionOriginal,
                               returnPath: getAreaPath(`actuales/${id}`),
                               proveedorId: id,
-                              readOnly: true // Modo solo lectura
+                              readOnly: false // Modo edición (igual que botón Editar)
+                            }
+                          });
+                        } else {
+                          navigate(getAreaPath('evaluacion'), {
+                            state: {
+                              returnPath: getAreaPath(`actuales/${id}`),
+                              proveedorId: id,
+                              readOnly: false
                             }
                           });
                         }
@@ -1175,7 +1183,7 @@ const ProveedorDetalle: React.FC = () => {
               <div>
                 <h2 className="text-xl font-bold text-[#111318] mb-1">Catalogo del Proveedor</h2>
                 <p className="text-sm text-gray-500">
-                  Listado completo de servicios asociados al proveedor (entregados o no).
+                  Servicios ofrecidos por el proveedor.
                 </p>
               </div>
               <button
@@ -1630,4 +1638,3 @@ const ProveedorDetalle: React.FC = () => {
 };
 
 export default ProveedorDetalle;
-
