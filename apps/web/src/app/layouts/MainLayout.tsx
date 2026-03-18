@@ -1,10 +1,12 @@
 import React from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { useAreas } from '@shared/rbac/useAreas';
 import AreaSelector from '@shared/rbac/AreaSelector';
 import { useAuth } from '@shared/auth/useAuth';
 import { useHasPermissions } from '@shared/rbac/useHasPermissions';
 import OnboardingView from '@shared/onboarding/OnboardingView';
+import TutorialVideosModal from '@shared/tutorials/TutorialVideosModal';
+import { AreaId, AREAS } from '@contracts/areas';
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -21,8 +23,13 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const { areaId } = useParams<{ areaId: string }>();
+  const [isTutorialsModalOpen, setIsTutorialsModalOpen] = React.useState(false);
 
   const loading = areasLoading || permissionsLoading;
+  const currentArea = areaId && Object.values(AreaId).includes(areaId as AreaId)
+    ? AREAS[areaId as AreaId]
+    : null;
 
   // Si está en la ruta raíz /app (sin /area/), redirigir a la primera área disponible
   React.useEffect(() => {
@@ -30,6 +37,12 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
       navigate(`/app/area/${areas[0]}`, { replace: true });
     }
   }, [location.pathname, areas, loading, hasPermissions, navigate]);
+
+  React.useEffect(() => {
+    if (!areaId && isTutorialsModalOpen) {
+      setIsTutorialsModalOpen(false);
+    }
+  }, [areaId, isTutorialsModalOpen]);
 
   // Mostrar loading mientras se verifican los permisos
   if (loading) {
@@ -62,6 +75,19 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
           </div>
           <div className="flex items-center gap-4">
             <AreaSelector />
+            <button
+              onClick={() => setIsTutorialsModalOpen(true)}
+              disabled={!currentArea}
+              title={
+                currentArea
+                  ? `Ver tutoriales de ${currentArea.displayName}`
+                  : 'Selecciona un modulo para ver tutoriales'
+              }
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 hover:border-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <span className="material-symbols-outlined text-[20px] text-[#616f89]">smart_display</span>
+              <span className="text-sm font-medium text-[#111318]">Tutoriales</span>
+            </button>
             {user && (
               <div className="flex items-center gap-2">
                 {user.user_metadata?.avatar_url ? (
@@ -88,6 +114,13 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
 
       {/* Contenido */}
       {children}
+
+      <TutorialVideosModal
+        isOpen={isTutorialsModalOpen}
+        onClose={() => setIsTutorialsModalOpen(false)}
+        areaId={currentArea?.id ?? null}
+        areaDisplayName={currentArea?.displayName}
+      />
     </div>
   );
 };
