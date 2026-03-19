@@ -1,15 +1,23 @@
 import React from 'react';
 import {
+  fetchDashboardKpis,
+  fetchDashboardTiemposEvolucionAnual,
+  fetchDashboardActividadEvolucionAnual,
+  fetchDashboardTareasPendientesPorResponsable,
+} from '../services/acreditacionService';
+import type {
+  DashboardKpis,
+  DashboardTiempoMensual,
+  DashboardActividadMensual,
+  DashboardPendientesResponsableItem,
+} from '../services/acreditacionService';
+import {
   AreaChart,
   Area,
-  LineChart,
   Line,
-  BarChart,
-  Bar,
   PieChart,
   Pie,
   Cell,
-  LabelList,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -22,29 +30,152 @@ interface DashboardViewProps {
   // Por ahora no necesita props, pero se puede extender en el futuro
 }
 
+const MONTH_LABELS = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+const RESPONSABLE_COLORS: Record<DashboardPendientesResponsableItem['responsable'], string> = {
+  JPRO: 'hsl(217, 91%, 60%)',
+  EPR: 'hsl(160, 72%, 42%)',
+  RRHH: 'hsl(38, 92%, 50%)',
+  Legal: 'hsl(4, 90%, 58%)',
+  Otros: 'hsl(220, 9%, 46%)',
+};
+
+const buildEmptyTiemposData = (): DashboardTiempoMensual[] =>
+  MONTH_LABELS.map((mes) => ({
+    mes,
+    promedio: null,
+    minimo: null,
+    maximo: null,
+    cantidad: 0,
+  }));
+
+const buildEmptyActividadData = (): DashboardActividadMensual[] =>
+  MONTH_LABELS.map((mes) => ({
+    mes,
+    solicitudes: 0,
+    completadas: 0,
+    pendientes: 0,
+    atrasadas: 0,
+    cumplimiento: 0,
+  }));
+
+const buildEmptyPendientesResponsableData = (): DashboardPendientesResponsableItem[] => [
+  { responsable: 'JPRO', cantidad: 0 },
+  { responsable: 'EPR', cantidad: 0 },
+  { responsable: 'RRHH', cantidad: 0 },
+  { responsable: 'Legal', cantidad: 0 },
+  { responsable: 'Otros', cantidad: 0 },
+];
+
 const DashboardView: React.FC<DashboardViewProps> = () => {
   // Estado para controlar el modal del gráfico ampliado
   const [isActivityChartModalOpen, setIsActivityChartModalOpen] = React.useState(false);
-  
-  // Datos dummy para los 12 meses del año
-  const months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-  
-  // Datos para gráfico de evolución de actividad (según tabla proporcionada)
-  // Las atrasadas están incluidas dentro de las pendientes
-  const activityData = [
-    { mes: 'Ene', solicitudes: 46, completadas: 38, pendientes: 7, atrasadas: 3, cumplimiento: Math.round((38 / 46) * 100) },
-    { mes: 'Feb', solicitudes: 53, completadas: 44, pendientes: 8, atrasadas: 3, cumplimiento: Math.round((44 / 53) * 100) },
-    { mes: 'Mar', solicitudes: 38, completadas: 31, pendientes: 6, atrasadas: 2, cumplimiento: Math.round((31 / 38) * 100) },
-    { mes: 'Abr', solicitudes: 61, completadas: 52, pendientes: 9, atrasadas: 4, cumplimiento: Math.round((52 / 61) * 100) },
-    { mes: 'May', solicitudes: 55, completadas: 47, pendientes: 8, atrasadas: 3, cumplimiento: Math.round((47 / 55) * 100) },
-    { mes: 'Jun', solicitudes: 49, completadas: 41, pendientes: 7, atrasadas: 3, cumplimiento: Math.round((41 / 49) * 100) },
-    { mes: 'Jul', solicitudes: 58, completadas: 50, pendientes: 8, atrasadas: 3, cumplimiento: Math.round((50 / 58) * 100) },
-    { mes: 'Ago', solicitudes: 62, completadas: 54, pendientes: 8, atrasadas: 3, cumplimiento: Math.round((54 / 62) * 100) },
-    { mes: 'Sep', solicitudes: 49, completadas: 42, pendientes: 7, atrasadas: 2, cumplimiento: Math.round((42 / 49) * 100) },
-    { mes: 'Oct', solicitudes: 54, completadas: 46, pendientes: 8, atrasadas: 3, cumplimiento: Math.round((46 / 54) * 100) },
-    { mes: 'Nov', solicitudes: 47, completadas: 40, pendientes: 7, atrasadas: 3, cumplimiento: Math.round((40 / 47) * 100) },
-    { mes: 'Dic', solicitudes: 51, completadas: 44, pendientes: 7, atrasadas: 2, cumplimiento: Math.round((44 / 51) * 100) },
-  ];
+  const [dashboardKpis, setDashboardKpis] = React.useState<DashboardKpis>({
+    totalSolicitudes: 0,
+    totalTasksCompleted: 0,
+    totalTasksAll: 0,
+    tasaCumplimiento: 0,
+    solicitudesPendientes: 0,
+    solicitudesAtrasadas: 0,
+    tiempoPromedioDias: 0,
+    proyectosFinalizados: 0,
+  });
+  const [isLoadingStats, setIsLoadingStats] = React.useState(true);
+  const [statsError, setStatsError] = React.useState<string | null>(null);
+  const [tiemposEvolucionData, setTiemposEvolucionData] = React.useState<DashboardTiempoMensual[]>(
+    () => buildEmptyTiemposData()
+  );
+  const [tiemposError, setTiemposError] = React.useState<string | null>(null);
+  const [actividadData, setActividadData] = React.useState<DashboardActividadMensual[]>(
+    () => buildEmptyActividadData()
+  );
+  const [activityError, setActivityError] = React.useState<string | null>(null);
+  const [pendientesResponsableData, setPendientesResponsableData] = React.useState<
+    DashboardPendientesResponsableItem[]
+  >(() => buildEmptyPendientesResponsableData());
+  const [responsablesError, setResponsablesError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    let isMounted = true;
+
+    const loadStats = async () => {
+      const [kpisResult, tiemposResult, actividadResult, responsablesResult] = await Promise.allSettled([
+        fetchDashboardKpis(),
+        fetchDashboardTiemposEvolucionAnual(),
+        fetchDashboardActividadEvolucionAnual(),
+        fetchDashboardTareasPendientesPorResponsable(),
+      ]);
+
+      if (!isMounted) return;
+
+      if (kpisResult.status === 'fulfilled') {
+        setDashboardKpis(kpisResult.value);
+        setStatsError(null);
+      } else {
+        console.error('Error cargando metricas del dashboard:', kpisResult.reason);
+        const errorMessage =
+          kpisResult.reason instanceof Error
+            ? kpisResult.reason.message
+            : 'Error desconocido al consultar la base de datos.';
+        setStatsError(`No se pudieron cargar las metricas: ${errorMessage}`);
+      }
+
+      if (tiemposResult.status === 'fulfilled') {
+        setTiemposEvolucionData(tiemposResult.value);
+        setTiemposError(null);
+      } else {
+        console.error('Error cargando evolucion de tiempos:', tiemposResult.reason);
+        const errorMessage =
+          tiemposResult.reason instanceof Error
+            ? tiemposResult.reason.message
+            : 'Error desconocido al consultar la base de datos.';
+        setTiemposEvolucionData(buildEmptyTiemposData());
+        setTiemposError(`No se pudo cargar la evolucion de tiempos: ${errorMessage}`);
+      }
+
+      if (actividadResult.status === 'fulfilled') {
+        setActividadData(actividadResult.value);
+        setActivityError(null);
+      } else {
+        console.error('Error cargando evolucion de actividad:', actividadResult.reason);
+        const errorMessage =
+          actividadResult.reason instanceof Error
+            ? actividadResult.reason.message
+            : 'Error desconocido al consultar la base de datos.';
+        setActividadData(buildEmptyActividadData());
+        setActivityError(`No se pudo cargar la evolucion de actividad: ${errorMessage}`);
+      }
+
+      if (responsablesResult.status === 'fulfilled') {
+        setPendientesResponsableData(responsablesResult.value);
+        setResponsablesError(null);
+      } else {
+        console.error(
+          'Error cargando tareas pendientes por responsable:',
+          responsablesResult.reason
+        );
+        const errorMessage =
+          responsablesResult.reason instanceof Error
+            ? responsablesResult.reason.message
+            : 'Error desconocido al consultar la base de datos.';
+        setPendientesResponsableData(buildEmptyPendientesResponsableData());
+        setResponsablesError(
+          `No se pudieron cargar las tareas pendientes por responsable: ${errorMessage}`
+        );
+      }
+
+      setIsLoadingStats(false);
+    };
+
+    loadStats();
+
+    const interval = window.setInterval(loadStats, 30000);
+
+    return () => {
+      isMounted = false;
+      window.clearInterval(interval);
+    };
+  }, []);
+  const currentYear = new Date().getFullYear();
 
   // Custom Tooltip para el gráfico
   const CustomTooltip = ({ active, payload, label }: any) => {
@@ -94,90 +225,41 @@ const DashboardView: React.FC<DashboardViewProps> = () => {
   // Custom Tooltip para gráfico de tiempos de acreditación
   const TiemposTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
+      const validEntries = payload.filter((entry: any) => typeof entry.value === 'number');
+
       return (
         <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-lg">
           <p className="text-sm font-semibold text-[#111318] mb-3">{label}</p>
-          <div className="space-y-2">
-            {payload.map((entry: any, index: number) => (
-              <div key={index} className="flex items-center justify-between gap-4">
-                <div className="flex items-center gap-2">
-                  <div 
-                    className="w-3 h-3 rounded-full" 
-                    style={{ backgroundColor: entry.color }}
-                  />
-                  <span className="text-sm text-gray-600">{entry.name}</span>
+          {validEntries.length === 0 ? (
+            <p className="text-sm text-gray-500">Sin datos en este mes</p>
+          ) : (
+            <div className="space-y-2">
+              {validEntries.map((entry: any, index: number) => (
+                <div key={index} className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-2">
+                    <div 
+                      className="w-3 h-3 rounded-full" 
+                      style={{ backgroundColor: entry.color }}
+                    />
+                    <span className="text-sm text-gray-600">{entry.name}</span>
+                  </div>
+                  <span className="text-sm font-medium text-[#111318]">{entry.value} días</span>
                 </div>
-                <span className="text-sm font-medium text-[#111318]">{entry.value} días</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      );
-    }
-    return null;
-  };
-  
-  // Datos para gráfico de barras (debe estar antes de complianceData)
-  const barData = [
-    { mes: 'Ene', solicitudes: 45 },
-    { mes: 'Feb', solicitudes: 52 },
-    { mes: 'Mar', solicitudes: 38 },
-    { mes: 'Abr', solicitudes: 61 },
-    { mes: 'May', solicitudes: 55 },
-    { mes: 'Jun', solicitudes: 48 },
-    { mes: 'Jul', solicitudes: 58 },
-    { mes: 'Ago', solicitudes: 62 },
-    { mes: 'Sep', solicitudes: 49 },
-    { mes: 'Oct', solicitudes: 54 },
-    { mes: 'Nov', solicitudes: 47 },
-    { mes: 'Dic', solicitudes: 51 },
-  ];
-
-  // Datos para tendencia de cumplimiento
-  const complianceTrend = [82, 85, 88, 86, 91, 89, 87, 90, 88, 89, 91, 92];
-  const maxCompliance = 100;
-  
-  // Datos para gráfico de cumplimiento en formato Recharts
-  const complianceData = months.map((mes, index) => ({
-    mes,
-    cumplimiento: complianceTrend[index],
-    solicitudes: barData[index].solicitudes,
-  }));
-
-  // Custom Tooltip para gráfico de cumplimiento
-  const ComplianceTooltip = ({ active, payload, label }: any) => {
-    if (active && payload && payload.length) {
-      const value = payload[0].value;
-      const data = payload[0].payload;
-      return (
-        <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-lg">
-          <p className="text-sm font-semibold text-[#111318] mb-3">{label}</p>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between gap-4">
-              <span className="text-sm text-gray-600">Cumplimiento:</span>
-              <span className="text-sm font-bold text-emerald-600">{value}%</span>
+              ))}
             </div>
-            {data.solicitudes && (
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-sm text-gray-600">Solicitudes:</span>
-                <span className="text-sm font-medium text-[#111318]">{data.solicitudes}</span>
-              </div>
-            )}
-          </div>
+          )}
         </div>
       );
     }
     return null;
   };
-
-  const promedio = Math.round(barData.reduce((acc, item) => acc + item.solicitudes, 0) / barData.length);
 
   // Función para renderizar el gráfico de Evolución de Actividad
   const renderActivityChart = (heightClass: string = 'h-[220px]') => (
     <div className={`${heightClass} w-full`}>
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart
-          data={activityData}
+          data={actividadData}
           margin={{ top: 20, right: 20, left: 0, bottom: 0 }}
         >
           <defs>
@@ -282,85 +364,66 @@ const DashboardView: React.FC<DashboardViewProps> = () => {
   );
 
   // Datos para gráfico de tareas pendientes por responsable
-  const tareasPendientesPorResponsable = [
-    { responsable: 'JPRO', cantidad: 45, color: 'hsl(217, 91%, 60%)' },
-    { responsable: 'EPR', cantidad: 32, color: 'hsl(160, 72%, 42%)' },
-    { responsable: 'RRHH', cantidad: 28, color: 'hsl(38, 92%, 50%)' },
-    { responsable: 'Legal', cantidad: 15, color: 'hsl(4, 90%, 58%)' },
-  ];
+  const tareasPendientesPorResponsable = pendientesResponsableData.map((item) => ({
+    ...item,
+    color: RESPONSABLE_COLORS[item.responsable],
+  }));
 
   const totalTareasPendientes = tareasPendientesPorResponsable.reduce((acc, item) => acc + item.cantidad, 0);
 
-  // Datos simulados para tiempos de acreditación (en días)
-  const tiemposAcreditacion = {
-    promedio: 18,
-    masRapido: 7,
-    masLento: 35,
-    mediana: 16,
-  };
+  // Datos para grafico de evolucion de tiempos de acreditacion
+  // Datos del grafico de evolucion de tiempos se cargan desde BD en estado React
 
-  // Datos para gráfico de evolución de tiempos de acreditación
-  const tiemposEvolucionData = [
-    { mes: 'Ene', promedio: 22, minimo: 8, maximo: 38 },
-    { mes: 'Feb', promedio: 19, minimo: 7, maximo: 35 },
-    { mes: 'Mar', promedio: 17, minimo: 6, maximo: 32 },
-    { mes: 'Abr', promedio: 16, minimo: 7, maximo: 30 },
-    { mes: 'May', promedio: 18, minimo: 8, maximo: 33 },
-    { mes: 'Jun', promedio: 15, minimo: 6, maximo: 28 },
-    { mes: 'Jul', promedio: 16, minimo: 7, maximo: 29 },
-    { mes: 'Ago', promedio: 17, minimo: 7, maximo: 31 },
-    { mes: 'Sep', promedio: 15, minimo: 6, maximo: 27 },
-    { mes: 'Oct', promedio: 16, minimo: 7, maximo: 30 },
-    { mes: 'Nov', promedio: 14, minimo: 6, maximo: 26 },
-    { mes: 'Dic', promedio: 15, minimo: 6, maximo: 28 },
-  ];
-
-  // Calcular total de atrasadas (suma del último mes)
-  const totalAtrasadas = activityData.reduce((acc, item) => acc + item.atrasadas, 0);
-  const ultimoMesAtrasadas = activityData[activityData.length - 1]?.atrasadas || 0;
-  const mesAnteriorAtrasadas = activityData[activityData.length - 2]?.atrasadas || 0;
-  const cambioAtrasadas = mesAnteriorAtrasadas > 0 
-    ? `${ultimoMesAtrasadas > mesAnteriorAtrasadas ? '+' : ''}${Math.round(((ultimoMesAtrasadas - mesAnteriorAtrasadas) / mesAnteriorAtrasadas) * 100)}%`
-    : '0%';
+  // KPIs conectados a datos reales de solicitudes y requerimientos
+  const {
+    totalSolicitudes,
+    totalTasksCompleted,
+    totalTasksAll,
+    tasaCumplimiento,
+    solicitudesPendientes,
+    solicitudesAtrasadas,
+    tiempoPromedioDias,
+    proyectosFinalizados,
+  } = dashboardKpis;
 
   // KPIs principales
   const stats = [
     {
       title: 'Total Solicitudes',
-      value: '244',
-      change: '+12%',
+      value: isLoadingStats ? '...' : totalSolicitudes.toString(),
+      change: `${proyectosFinalizados} finalizadas`,
       positive: true,
       icon: 'description',
       iconBg: 'bg-[hsl(160,72%,42%)]',
     },
     {
       title: 'Tasa de Cumplimiento',
-      value: '89%',
-      change: '+3%',
-      positive: true,
+      value: isLoadingStats ? '...' : `${tasaCumplimiento}%`,
+      change: totalTasksAll > 0 ? `${totalTasksCompleted}/${totalTasksAll} tareas` : 'Sin tareas',
+      positive: tasaCumplimiento >= 80,
       icon: 'check_circle',
       iconBg: 'bg-[hsl(160,72%,42%)]',
     },
     {
       title: 'Solicitudes Pendientes',
-      value: '34',
-      change: '-8%',
+      value: isLoadingStats ? '...' : solicitudesPendientes.toString(),
+      change: 'No finalizadas',
       positive: false,
       icon: 'pending',
       iconBg: 'bg-amber-500',
     },
     {
       title: 'Solicitudes Atrasadas',
-      value: ultimoMesAtrasadas.toString(),
-      change: cambioAtrasadas,
-      positive: ultimoMesAtrasadas <= mesAnteriorAtrasadas,
+      value: isLoadingStats ? '...' : solicitudesAtrasadas.toString(),
+      change: 'Estado atrasado',
+      positive: solicitudesAtrasadas === 0,
       icon: 'warning',
       iconBg: 'bg-red-600',
     },
     {
       title: 'Tiempo Promedio',
-      value: `${tiemposAcreditacion.promedio} días`,
-      change: '-2 días',
+      value: isLoadingStats ? '...' : `${tiempoPromedioDias} días`,
+      change: proyectosFinalizados > 0 ? `${proyectosFinalizados} finalizadas` : 'Sin finalizadas',
       positive: true,
       icon: 'schedule',
       iconBg: 'bg-blue-500',
@@ -370,57 +433,6 @@ const DashboardView: React.FC<DashboardViewProps> = () => {
 
 
   // Función para renderizar gráfico de líneas
-  const renderLineChart = (data: number[], maxValue: number, labels: string[]) => {
-    const points = data.map((value, index) => {
-      const x = (index / (data.length - 1)) * 100;
-      const y = 100 - (value / maxValue) * 100;
-      return `${x},${y}`;
-    }).join(' ');
-
-    return (
-      <div className="h-48 relative">
-        <svg viewBox="0 0 100 100" className="w-full h-full" preserveAspectRatio="none">
-          <defs>
-            <linearGradient id="lineGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stopColor="#059669" stopOpacity="0.3" />
-              <stop offset="100%" stopColor="#059669" stopOpacity="0" />
-            </linearGradient>
-          </defs>
-          <polyline
-            points={points}
-            fill="none"
-            stroke="#059669"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          <polygon
-            points={`${points} 100,100 0,100`}
-            fill="url(#lineGradient)"
-          />
-          {data.map((value, index) => {
-            const x = (index / (data.length - 1)) * 100;
-            const y = 100 - (value / maxValue) * 100;
-            return (
-              <circle
-                key={index}
-                cx={x}
-                cy={y}
-                r="2"
-                fill="#059669"
-                className="hover:r-3 transition-all"
-              />
-            );
-          })}
-        </svg>
-        <div className="absolute bottom-0 left-0 right-0 flex justify-between text-xs text-gray-500 px-1">
-          {labels.map((label, index) => (
-            <span key={index}>{label}</span>
-          ))}
-        </div>
-      </div>
-    );
-  };
 
   return (
     <div className="min-h-screen bg-[#f8fafc] p-4 lg:p-8">
@@ -466,6 +478,11 @@ const DashboardView: React.FC<DashboardViewProps> = () => {
             </div>
           ))}
         </div>
+        {statsError && (
+          <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            {statsError}
+          </div>
+        )}
 
         {/* Gráfico de Evolución de Tiempos de Acreditación */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200/40 p-6 mb-6">
@@ -476,7 +493,7 @@ const DashboardView: React.FC<DashboardViewProps> = () => {
                   Evolución de Tiempos de Acreditación
                 </h3>
                 <p className="text-sm text-gray-500">
-                  Tiempo promedio, mínimo y máximo de acreditación por mes (en días)
+                  Tiempo promedio, minimo y maximo de acreditacion por mes (en dias) - {currentYear}
                 </p>
               </div>
               <div className="flex items-center gap-6">
@@ -495,6 +512,11 @@ const DashboardView: React.FC<DashboardViewProps> = () => {
               </div>
             </div>
           </div>
+          {tiemposError && (
+            <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              {tiemposError}
+            </div>
+          )}
           <div className="h-[400px] w-full">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart
@@ -550,6 +572,7 @@ const DashboardView: React.FC<DashboardViewProps> = () => {
                   fill="url(#colorMaximo)"
                   dot={{ fill: 'hsl(4, 90%, 58%)', strokeWidth: 0, r: 0 }}
                   activeDot={{ fill: 'hsl(4, 90%, 58%)', strokeWidth: 3, stroke: 'white', r: 6 }}
+                  connectNulls={false}
                 />
                 <Area
                   type="monotone"
@@ -561,6 +584,7 @@ const DashboardView: React.FC<DashboardViewProps> = () => {
                   fill="url(#colorPromedio)"
                   dot={{ fill: 'hsl(217, 91%, 60%)', strokeWidth: 0, r: 0 }}
                   activeDot={{ fill: 'hsl(217, 91%, 60%)', strokeWidth: 3, stroke: 'white', r: 6 }}
+                  connectNulls={false}
                 />
                 <Area
                   type="monotone"
@@ -572,6 +596,7 @@ const DashboardView: React.FC<DashboardViewProps> = () => {
                   fill="url(#colorMinimo)"
                   dot={{ fill: 'hsl(160, 72%, 42%)', strokeWidth: 0, r: 0 }}
                   activeDot={{ fill: 'hsl(160, 72%, 42%)', strokeWidth: 3, stroke: 'white', r: 6 }}
+                  connectNulls={false}
                 />
               </AreaChart>
             </ResponsiveContainer>
@@ -623,6 +648,11 @@ const DashboardView: React.FC<DashboardViewProps> = () => {
                 </div>
               </div>
             </div>
+            {activityError && (
+              <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                {activityError}
+              </div>
+            )}
             {renderActivityChart('h-[220px]')}
           </div>
 
@@ -637,6 +667,11 @@ const DashboardView: React.FC<DashboardViewProps> = () => {
               <span className="material-symbols-outlined text-gray-500 text-xl">assignment</span>
             </div>
           </div>
+          {responsablesError && (
+            <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              {responsablesError}
+            </div>
+          )}
           <div className="flex items-center gap-8">
             {/* Donut Chart */}
             <div className="relative w-[240px] h-[240px] flex-shrink-0">
@@ -647,7 +682,9 @@ const DashboardView: React.FC<DashboardViewProps> = () => {
                     content={({ active, payload }: any) => {
                       if (active && payload && payload.length) {
                         const data = payload[0].payload;
-                        const porcentaje = ((data.cantidad / totalTareasPendientes) * 100).toFixed(1);
+                        const porcentaje = totalTareasPendientes > 0
+                          ? ((data.cantidad / totalTareasPendientes) * 100).toFixed(1)
+                          : '0.0';
                         return (
                           <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-lg">
                             <p className="text-sm font-semibold text-[#111318] mb-3">{data.responsable}</p>
@@ -704,7 +741,9 @@ const DashboardView: React.FC<DashboardViewProps> = () => {
             {/* Legend */}
             <div className="flex-1 space-y-4">
               {tareasPendientesPorResponsable.map((item, index) => {
-                const porcentaje = ((item.cantidad / totalTareasPendientes) * 100).toFixed(1);
+                const porcentaje = totalTareasPendientes > 0
+                  ? ((item.cantidad / totalTareasPendientes) * 100).toFixed(1)
+                  : '0.0';
                 return (
                   <div key={index} className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
@@ -751,8 +790,10 @@ const DashboardView: React.FC<DashboardViewProps> = () => {
                 </tr>
               </thead>
               <tbody>
-                {activityData.map((item, index) => {
-                  const successRate = ((item.completadas / item.solicitudes) * 100).toFixed(1);
+                {actividadData.map((item, index) => {
+                  const successRate = item.solicitudes > 0
+                    ? ((item.completadas / item.solicitudes) * 100).toFixed(1)
+                    : '0.0';
                   return (
                     <tr key={index} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
                       <td className="py-3 px-4 text-sm text-gray-700 font-medium">{item.mes}</td>
@@ -838,7 +879,7 @@ const DashboardView: React.FC<DashboardViewProps> = () => {
                 <div className="h-[450px] w-full">
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart
-                      data={activityData}
+                      data={actividadData}
                       margin={{ top: 20, right: 30, left: 20, bottom: 20 }}
                     >
                       <defs>
@@ -951,5 +992,3 @@ const DashboardView: React.FC<DashboardViewProps> = () => {
 };
 
 export default DashboardView;
-
-

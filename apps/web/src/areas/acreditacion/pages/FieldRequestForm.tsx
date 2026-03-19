@@ -122,14 +122,17 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
   const [filteredPersonasSolicitante, setFilteredPersonasSolicitante] = useState<Persona[]>([]);
   const [searchQuerySolicitante, setSearchQuerySolicitante] = useState('');
   const [selectedPersonaSolicitante, setSelectedPersonaSolicitante] = useState<Persona | null>(null);
+  const [isManualSolicitante, setIsManualSolicitante] = useState(false);
   const [showDropdownSolicitante, setShowDropdownSolicitante] = useState(false);
   const [filteredPersonasJefeProyecto, setFilteredPersonasJefeProyecto] = useState<Persona[]>([]);
   const [searchQueryJefeProyecto, setSearchQueryJefeProyecto] = useState('');
   const [selectedPersonaJefeProyecto, setSelectedPersonaJefeProyecto] = useState<Persona | null>(null);
+  const [isManualJefeProyecto, setIsManualJefeProyecto] = useState(false);
   const [showDropdownJefeProyecto, setShowDropdownJefeProyecto] = useState(false);
   const [filteredPersonasAdminContrato, setFilteredPersonasAdminContrato] = useState<Persona[]>([]);
   const [searchQueryAdminContrato, setSearchQueryAdminContrato] = useState('');
   const [selectedPersonaAdminContrato, setSelectedPersonaAdminContrato] = useState<Persona | null>(null);
+  const [isManualAdminContrato, setIsManualAdminContrato] = useState(false);
   const [showDropdownAdminContrato, setShowDropdownAdminContrato] = useState(false);
   const [filteredClientes, setFilteredClientes] = useState<Cliente[]>([]);
   const [searchQueryCliente, setSearchQueryCliente] = useState('');
@@ -162,6 +165,9 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
     setSelectedPersonaSolicitante(null);
     setSelectedPersonaJefeProyecto(null);
     setSelectedPersonaAdminContrato(null);
+    setIsManualSolicitante(false);
+    setIsManualJefeProyecto(false);
+    setIsManualAdminContrato(false);
     setSelectedCliente(null);
     setShowDropdownSolicitante(false);
     setShowDropdownJefeProyecto(false);
@@ -229,12 +235,15 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
     setVehiculosContratista([]);
     setSearchQuerySolicitante('');
     setSelectedPersonaSolicitante(null);
+    setIsManualSolicitante(false);
     setShowDropdownSolicitante(false);
     setSearchQueryJefeProyecto('');
     setSelectedPersonaJefeProyecto(null);
+    setIsManualJefeProyecto(false);
     setShowDropdownJefeProyecto(false);
     setSearchQueryAdminContrato('');
     setSelectedPersonaAdminContrato(null);
+    setIsManualAdminContrato(false);
     setShowDropdownAdminContrato(false);
     setSearchQueryCliente('');
     setSelectedCliente(null);
@@ -447,6 +456,32 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
     }
   }, [searchQuerySolicitante, personas]);
 
+  // Sincronizar UI del buscador con requesterName cuando se rellena programáticamente
+  useEffect(() => {
+    if (formData.requesterName.trim() !== '') {
+      const personaSeleccionada = personas.find(
+        persona => persona.nombre_completo.toLowerCase() === formData.requesterName.toLowerCase()
+      );
+
+      if (personaSeleccionada) {
+        setSelectedPersonaSolicitante(personaSeleccionada);
+        setSearchQuerySolicitante(`${personaSeleccionada.nombre_completo} - ${personaSeleccionada.rut}`);
+        setIsManualSolicitante(false);
+      } else {
+        setSelectedPersonaSolicitante(null);
+        setSearchQuerySolicitante(formData.requesterName);
+        setIsManualSolicitante(true);
+      }
+      return;
+    }
+
+    if (!showDropdownSolicitante) {
+      setSelectedPersonaSolicitante(null);
+      setSearchQuerySolicitante('');
+      setIsManualSolicitante(false);
+    }
+  }, [formData.requesterName, personas, showDropdownSolicitante]);
+
   // Filtrar personas cuando cambia el término de búsqueda del jefe de proyecto
   useEffect(() => {
     if (searchQueryJefeProyecto.trim() === '') {
@@ -470,9 +505,11 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
       if (personaSeleccionada) {
         setSelectedPersonaJefeProyecto(personaSeleccionada);
         setSearchQueryJefeProyecto(`${personaSeleccionada.nombre_completo} - ${personaSeleccionada.rut}`);
+        setIsManualJefeProyecto(false);
       } else {
         setSelectedPersonaJefeProyecto(null);
         setSearchQueryJefeProyecto(formData.projectManager);
+        setIsManualJefeProyecto(true);
       }
       return;
     }
@@ -480,6 +517,7 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
     if (!showDropdownJefeProyecto) {
       setSelectedPersonaJefeProyecto(null);
       setSearchQueryJefeProyecto('');
+      setIsManualJefeProyecto(false);
     }
   }, [formData.projectManager, personas, showDropdownJefeProyecto]);
 
@@ -506,9 +544,11 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
       if (personaSeleccionada) {
         setSelectedPersonaAdminContrato(personaSeleccionada);
         setSearchQueryAdminContrato(`${personaSeleccionada.nombre_completo} - ${personaSeleccionada.rut}`);
+        setIsManualAdminContrato(false);
       } else {
         setSelectedPersonaAdminContrato(null);
         setSearchQueryAdminContrato(formData.contractAdmin);
+        setIsManualAdminContrato(true);
       }
       return;
     }
@@ -517,6 +557,7 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
     if (!showDropdownAdminContrato) {
       setSelectedPersonaAdminContrato(null);
       setSearchQueryAdminContrato('');
+      setIsManualAdminContrato(false);
     }
   }, [formData.contractAdmin, personas, showDropdownAdminContrato]);
 
@@ -684,6 +725,33 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
     }
   };
 
+  const handleUseLocalPersona = (
+    field: 'requesterName' | 'projectManager' | 'contractAdmin',
+    rawValue: string
+  ) => {
+    const localValue = rawValue.trim();
+    if (!localValue) return;
+
+    if (field === 'requesterName') {
+      setSelectedPersonaSolicitante(null);
+      setIsManualSolicitante(true);
+      setSearchQuerySolicitante(localValue);
+      setShowDropdownSolicitante(false);
+    } else if (field === 'projectManager') {
+      setSelectedPersonaJefeProyecto(null);
+      setIsManualJefeProyecto(true);
+      setSearchQueryJefeProyecto(localValue);
+      setShowDropdownJefeProyecto(false);
+    } else {
+      setSelectedPersonaAdminContrato(null);
+      setIsManualAdminContrato(true);
+      setSearchQueryAdminContrato(localValue);
+      setShowDropdownAdminContrato(false);
+    }
+
+    setFormData(prev => ({ ...prev, [field]: localValue }));
+  };
+
   const handleAddWorker = (worker: Worker) => {
     setWorkers(prev => [...prev, worker]);
   };
@@ -764,7 +832,7 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
       }
 
       if (!formData.requesterName) {
-        alert('Debes seleccionar un nombre de solicitante desde el buscador.');
+        alert('Debes completar el nombre de solicitante.');
         return;
       }
 
@@ -779,12 +847,12 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
       }
 
       if (!formData.projectManager) {
-        alert('Debes seleccionar un Jefe de Proyectos MYMA desde el buscador.');
+        alert('Debes completar el Jefe de Proyectos MYMA.');
         return;
       }
 
       if (!formData.contractAdmin) {
-        alert('Debes seleccionar un Admin. de Contrato MYMA desde el buscador.');
+        alert('Debes completar el Admin. de Contrato MYMA.');
         return;
       }
 
@@ -1639,6 +1707,11 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
               <label className="flex flex-col gap-2 lg:col-span-2">
                 <span className="text-[#111318] text-sm font-medium">
                   Nombre de Solicitante <span className="text-red-500">*</span>
+                  {isManualSolicitante && (
+                    <span className="ml-2 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
+                      Local
+                    </span>
+                  )}
                 </span>
                 <div className="relative">
                   <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-[#616f89] text-base">search</span>
@@ -1649,6 +1722,7 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
                     onChange={(e) => {
                       setSearchQuerySolicitante(e.target.value);
                       setSelectedPersonaSolicitante(null);
+                      setIsManualSolicitante(false);
                       setShowDropdownSolicitante(true);
                       setFormData(prev => ({ ...prev, requesterName: '' }));
                     }}
@@ -1664,6 +1738,7 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
                       onClick={() => {
                         setSearchQuerySolicitante('');
                         setSelectedPersonaSolicitante(null);
+                        setIsManualSolicitante(false);
                         setShowDropdownSolicitante(true);
                         setFormData(prev => ({ ...prev, requesterName: '' }));
                       }}
@@ -1683,6 +1758,7 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
                             onClick={() => {
                               setSelectedPersonaSolicitante(persona);
                               setSearchQuerySolicitante(`${persona.nombre_completo} - ${persona.rut}`);
+                              setIsManualSolicitante(false);
                               setShowDropdownSolicitante(false);
                               setFormData(prev => ({ ...prev, requesterName: persona.nombre_completo }));
                             }}
@@ -1697,6 +1773,15 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
                       ) : (
                         <div className="px-4 py-3 text-sm text-gray-500 text-center">
                           No se encontraron colaboradores
+                          {searchQuerySolicitante.trim() !== '' && (
+                            <button
+                              type="button"
+                              onClick={() => handleUseLocalPersona('requesterName', searchQuerySolicitante)}
+                              className="mt-2 inline-flex items-center rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700 hover:bg-amber-100"
+                            >
+                              + Agregar "{searchQuerySolicitante.trim()}" localmente
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>
@@ -1842,6 +1927,11 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
               <label className="flex flex-col gap-2">
                 <span className="text-[#111318] text-sm font-medium">
                   Jefe de Proyectos MYMA <span className="text-red-500">*</span>
+                  {isManualJefeProyecto && (
+                    <span className="ml-2 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
+                      Local
+                    </span>
+                  )}
                 </span>
                 <div className="relative">
                   <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-[#616f89] text-base">search</span>
@@ -1852,6 +1942,7 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
                     onChange={(e) => {
                       setSearchQueryJefeProyecto(e.target.value);
                       setSelectedPersonaJefeProyecto(null);
+                      setIsManualJefeProyecto(false);
                       setShowDropdownJefeProyecto(true);
                       setFormData(prev => ({ ...prev, projectManager: '' }));
                     }}
@@ -1867,6 +1958,7 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
                       onClick={() => {
                         setSearchQueryJefeProyecto('');
                         setSelectedPersonaJefeProyecto(null);
+                        setIsManualJefeProyecto(false);
                         setShowDropdownJefeProyecto(true);
                         setFormData(prev => ({ ...prev, projectManager: '' }));
                       }}
@@ -1885,6 +1977,7 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
                             onClick={() => {
                               setSelectedPersonaJefeProyecto(persona);
                               setSearchQueryJefeProyecto(`${persona.nombre_completo} - ${persona.rut}`);
+                              setIsManualJefeProyecto(false);
                               setShowDropdownJefeProyecto(false);
                               setFormData(prev => ({ ...prev, projectManager: persona.nombre_completo }));
                             }}
@@ -1899,6 +1992,15 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
                       ) : (
                         <div className="px-4 py-3 text-sm text-gray-500 text-center">
                           No se encontraron colaboradores
+                          {searchQueryJefeProyecto.trim() !== '' && (
+                            <button
+                              type="button"
+                              onClick={() => handleUseLocalPersona('projectManager', searchQueryJefeProyecto)}
+                              className="mt-2 inline-flex items-center rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700 hover:bg-amber-100"
+                            >
+                              + Agregar "{searchQueryJefeProyecto.trim()}" localmente
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>
@@ -1908,6 +2010,11 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
               <label className="flex flex-col gap-2">
                 <span className="text-[#111318] text-sm font-medium">
                   Admin. de Contrato MYMA <span className="text-red-500">*</span>
+                  {isManualAdminContrato && (
+                    <span className="ml-2 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
+                      Local
+                    </span>
+                  )}
                 </span>
                 <div className="relative">
                   <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-[#616f89] text-base">search</span>
@@ -1918,6 +2025,7 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
                     onChange={(e) => {
                       setSearchQueryAdminContrato(e.target.value);
                       setSelectedPersonaAdminContrato(null);
+                      setIsManualAdminContrato(false);
                       setShowDropdownAdminContrato(true);
                       setFormData(prev => ({ ...prev, contractAdmin: '' }));
                     }}
@@ -1933,6 +2041,7 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
                       onClick={() => {
                         setSearchQueryAdminContrato('');
                         setSelectedPersonaAdminContrato(null);
+                        setIsManualAdminContrato(false);
                         setShowDropdownAdminContrato(true);
                         setFormData(prev => ({ ...prev, contractAdmin: '' }));
                       }}
@@ -1951,6 +2060,7 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
                             onClick={() => {
                               setSelectedPersonaAdminContrato(persona);
                               setSearchQueryAdminContrato(`${persona.nombre_completo} - ${persona.rut}`);
+                              setIsManualAdminContrato(false);
                               setShowDropdownAdminContrato(false);
                               setFormData(prev => ({ ...prev, contractAdmin: persona.nombre_completo }));
                             }}
@@ -1965,6 +2075,15 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
                       ) : (
                         <div className="px-4 py-3 text-sm text-gray-500 text-center">
                           No se encontraron colaboradores
+                          {searchQueryAdminContrato.trim() !== '' && (
+                            <button
+                              type="button"
+                              onClick={() => handleUseLocalPersona('contractAdmin', searchQueryAdminContrato)}
+                              className="mt-2 inline-flex items-center rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700 hover:bg-amber-100"
+                            >
+                              + Agregar "{searchQueryAdminContrato.trim()}" localmente
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>
