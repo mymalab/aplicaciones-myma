@@ -1134,44 +1134,64 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
             fetchProyectoVehiculosByProyecto(result.id, result.codigo_proyecto),
           ]);
 
+          const normalizeCategoriaEmpresa = (value: any): string =>
+            (value || '')
+              .toString()
+              .trim()
+              .toLowerCase()
+              .normalize('NFD')
+              .replace(/[\u0300-\u036f]/g, '');
+
+          const isCategoriaMyma = (value: any): boolean =>
+            normalizeCategoriaEmpresa(value) === 'myma';
+
+          const isCategoriaContratista = (value: any): boolean =>
+            normalizeCategoriaEmpresa(value) === 'contratista';
+
+          const incluirDatosContratista = requiereAcreditarTrabajadoresContratista;
+
           // Especialistas y conductores internos (MyMA)
           const especialistasMyma = trabajadoresProyecto
-            .filter((t: any) => t.categoria_empresa === 'MyMA')
+            .filter((t: any) => isCategoriaMyma(t.categoria_empresa))
             .map((t: any) => ({
               id: t.id,
               nombre: t.nombre_trabajador,
             }));
 
-          const especialistasExternos = trabajadoresProyecto
-            .filter((t: any) => t.categoria_empresa !== 'MyMA')
-            .map((t: any) => ({
-              id: t.id,
-              nombre: t.nombre_trabajador,
-            }));
+          const especialistasExternos = incluirDatosContratista
+            ? trabajadoresProyecto
+                .filter((t: any) => isCategoriaContratista(t.categoria_empresa))
+                .map((t: any) => ({
+                  id: t.id,
+                  nombre: t.nombre_trabajador,
+                }))
+            : [];
 
           const conductoresMyma = conductoresProyecto
-            .filter((c: any) => c.categoria_empresa === 'MyMA')
+            .filter((c: any) => isCategoriaMyma(c.categoria_empresa))
             .map((c: any) => ({
               id: c.id,
               nombre: c.nombre_conductor,
             }));
 
-          const conductoresExternos = conductoresProyecto
-            .filter((c: any) => c.categoria_empresa !== 'MyMA')
-            .map((c: any) => ({
-              id: c.id,
-              nombre: c.nombre_conductor,
-            }));
+          const conductoresExternos = incluirDatosContratista
+            ? conductoresProyecto
+                .filter((c: any) => isCategoriaContratista(c.categoria_empresa))
+                .map((c: any) => ({
+                  id: c.id,
+                  nombre: c.nombre_conductor,
+                }))
+            : [];
 
-          const mapVehiculosPayload = (rows: any[], categoria: 'MyMA' | 'Externo') => {
+          const mapVehiculosPayload = (rows: any[], categoria: 'MyMA' | 'Contratista') => {
             const seen = new Set<string>();
 
             return rows
-              .filter((v: any) =>
+              .filter((v: any) => (
                 categoria === 'MyMA'
-                  ? v.categoria_empresa === 'MyMA'
-                  : v.categoria_empresa !== 'MyMA'
-              )
+                  ? isCategoriaMyma(v.categoria_empresa)
+                  : isCategoriaContratista(v.categoria_empresa)
+              ))
               .map((v: any) => {
                 const patente = typeof v.patente === 'string' ? v.patente.trim() : '';
                 const id = typeof v.id === 'number' ? v.id : Number(v.id);
@@ -1192,7 +1212,9 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
           };
 
           const vehiculosMyma = mapVehiculosPayload(vehiculosProyecto, 'MyMA');
-          const vehiculosExternos = mapVehiculosPayload(vehiculosProyecto, 'Externo');
+          const vehiculosExternos = incluirDatosContratista
+            ? mapVehiculosPayload(vehiculosProyecto, 'Contratista')
+            : [];
 
           const resumenAcreditacion = {
             codigo_proyecto: result.codigo_proyecto,
