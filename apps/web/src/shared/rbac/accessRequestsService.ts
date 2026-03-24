@@ -167,6 +167,46 @@ const fetchProfilesByUserIds = async (
 const normalizeModuleCode = (moduleCode: string): string =>
   moduleCode.toLowerCase().trim();
 
+interface AccessRequestWebhookPayload {
+  correo_usuario: string | null;
+  nombre_usuario: string | null;
+  modulos: string[];
+  mensaje: string | null;
+}
+
+const getUserDisplayName = (user: any): string | null => {
+  return (
+    normalizeNullableString(user?.user_metadata?.full_name) ||
+    normalizeNullableString(user?.user_metadata?.name) ||
+    normalizeNullableString(user?.email) ||
+    null
+  );
+};
+
+const sendAccessRequestWebhook = async (
+  payload: AccessRequestWebhookPayload
+): Promise<void> => {
+  try {
+    const { data, error } = await supabase.functions.invoke(
+      'send-access-request-webhook',
+      {
+        body: payload,
+      }
+    );
+
+    if (error) {
+      throw error;
+    }
+
+    if (data && data.success === false) {
+      throw new Error(data.error || 'Error enviando webhook de solicitud de acceso');
+    }
+  } catch (error) {
+    console.error('Error enviando webhook de solicitud de acceso:', error);
+    // No bloqueamos el flujo principal de creación de solicitudes por fallo de webhook.
+  }
+};
+
 const parseRoleCode = (roleCode: string): RoleCodeParts | null => {
   if (!roleCode || !roleCode.includes(':')) {
     return null;
@@ -537,6 +577,13 @@ export const createAccessRequests = async (params: {
   if (insertError) {
     throw new Error(`Error al crear solicitudes de acceso: ${insertError.message}`);
   }
+
+  await sendAccessRequestWebhook({
+    correo_usuario: normalizeNullableString(user.email),
+    nombre_usuario: getUserDisplayName(user),
+    modulos: moduleCodesToCreate,
+    mensaje: message,
+  });
 
   return {
     createdModuleCodes: moduleCodesToCreate,
