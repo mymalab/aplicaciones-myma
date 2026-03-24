@@ -3,16 +3,19 @@ import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-
 import Login from '@shared/auth/Login';
 import AuthCallback from '@shared/auth/AuthCallback';
 import ProtectedRoute from '@shared/auth/ProtectedRoute';
+import OnboardingView from '@shared/onboarding/OnboardingView';
 import MainLayout from './layouts/MainLayout';
+import PostLoginLayout from './layouts/PostLoginLayout';
 import AreaLayout from './layouts/AreaLayout';
 import AreaGuard from '@shared/rbac/AreaGuard';
 import AcreditacionRoutes from '@areas/acreditacion/routes';
 import ProveedoresRoutes from '@areas/proveedores/routes';
 import PersonasRoutes from '@areas/personas/routes';
 import AdendasRoutes from '@areas/adendas/routes';
+import AppHomeView from './pages/AppHomeView';
 import { AreaId } from '@contracts/areas';
 
-// Componente que renderiza las rutas según el área
+// Renderiza las rutas segun el area seleccionada.
 const AreaRoutes: React.FC = () => {
   const { areaId } = useParams<{ areaId: string }>();
 
@@ -34,25 +37,35 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Rutas públicas */}
+        {/* Rutas publicas */}
         <Route path="/login" element={<Login />} />
         <Route path="/auth/callback" element={<AuthCallback />} />
 
-        {/* Rutas protegidas */}
+        {/* Home principal post-login */}
         <Route
           path="/app"
           element={
             <ProtectedRoute>
-              <MainLayout>
-                <Routes>
-                  {/* Redirigir /app a la primera área disponible */}
-                  <Route path="*" element={<Navigate to="/app/area/acreditacion" replace />} />
-                </Routes>
-              </MainLayout>
+              <PostLoginLayout>
+                <AppHomeView />
+              </PostLoginLayout>
             </ProtectedRoute>
           }
         />
 
+        {/* Onboarding para usuarios sin acceso operativo */}
+        <Route
+          path="/app/onboarding"
+          element={
+            <ProtectedRoute>
+              <PostLoginLayout>
+                <OnboardingView mode="embedded" />
+              </PostLoginLayout>
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Rutas internas por area */}
         <Route
           path="/app/area/:areaId/*"
           element={
@@ -68,7 +81,6 @@ function App() {
           }
         />
 
-        {/* Redirigir la ruta raíz */}
         <Route path="/" element={<Navigate to="/login" replace />} />
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
@@ -77,4 +89,3 @@ function App() {
 }
 
 export default App;
-

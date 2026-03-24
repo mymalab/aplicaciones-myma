@@ -14,20 +14,10 @@ services:
         value: 3000
       - key: ACREDITACION_LEGACY_API_BASE_URL
         value: http://34.74.6.124
-      # Upstream dedicado para POST /api/acreditacion/asignar-folder (opcional).
-      # Si no se define, usa ACREDITACION_LEGACY_API_BASE_URL.
-      # - key: ACREDITACION_ASIGNAR_FOLDER_API_BASE_URL
-      #   value: https://tu-api-asignar-folder.onrender.com
-      # Upstream dedicado para POST /api/acreditacion/documentos/subir (opcional).
-      # Si no se define, usa ACREDITACION_LEGACY_API_BASE_URL.
-      # - key: ACREDITACION_DOCUMENTOS_API_BASE_URL
-      #   value: https://tu-api-documentos.onrender.com
       - key: ICSARA_API_BASE_URL
         value: http://34.74.6.124:8080
       - key: ICSARA_API_PREFIX
         value: /v1
-      - key: VITE_AUTH_REDIRECT_URL
-        value: https://aplicaciones-myma.onrender.com/auth/callback
       # Variables opcionales - si necesitas usar variables diferentes a las por defecto
       # - key: ICSARA_API_KEY
       #   value: your-icsara-api-key

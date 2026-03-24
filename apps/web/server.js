@@ -10,15 +10,8 @@ const __dirname = dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const normalizeBaseUrl = (baseUrl) => `${baseUrl ?? ''}`.trim().replace(/\/+$/, '');
 const ACREDITACION_LEGACY_API_BASE_URL =
-  normalizeBaseUrl(process.env.ACREDITACION_LEGACY_API_BASE_URL || 'http://34.74.6.124');
-const ACREDITACION_ASIGNAR_FOLDER_API_BASE_URL = normalizeBaseUrl(
-  process.env.ACREDITACION_ASIGNAR_FOLDER_API_BASE_URL || ACREDITACION_LEGACY_API_BASE_URL,
-);
-const ACREDITACION_DOCUMENTOS_API_BASE_URL = normalizeBaseUrl(
-  process.env.ACREDITACION_DOCUMENTOS_API_BASE_URL || ACREDITACION_LEGACY_API_BASE_URL,
-);
+  process.env.ACREDITACION_LEGACY_API_BASE_URL || 'http://34.74.6.124';
 const ICSARA_API_BASE_URL =
   process.env.ICSARA_API_BASE_URL || 'http://34.74.6.124:8080';
 const ICSARA_API_PREFIX =
@@ -36,60 +29,33 @@ app.use(express.json({ limit: '300mb' }));
 console.log(
   `[icsara] base=${ICSARA_API_BASE_URL} prefix=${ICSARA_API_PREFIX} apiKeyConfigured=${Boolean(ICSARA_API_KEY)}`,
 );
-console.log(
-  `[acreditacion] legacyBase=${ACREDITACION_LEGACY_API_BASE_URL} asignarFolderBase=${ACREDITACION_ASIGNAR_FOLDER_API_BASE_URL} documentosBase=${ACREDITACION_DOCUMENTOS_API_BASE_URL}`,
-);
 
-const proxyLegacyAcreditacionPost = async (
-  req,
-  res,
-  upstreamPath,
-  { baseUrl = ACREDITACION_LEGACY_API_BASE_URL, fallbackUpstreamPath = null } = {},
-) => {
+const proxyLegacyAcreditacionPost = async (req, res, upstreamPath) => {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
+  const endpoint = `${ACREDITACION_LEGACY_API_BASE_URL}${upstreamPath}`;
   const requestStartedAt = Date.now();
-  let endpoint = `${baseUrl}${upstreamPath}`;
 
   try {
-    const callEndpoint = async (path) => {
-      endpoint = `${baseUrl}${path}`;
-      console.log(`[proxy] POST ${path} -> ${endpoint}`);
+    console.log(`[proxy] POST ${upstreamPath} -> ${endpoint}`);
 
-      const upstreamResponse = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(req.body ?? {}),
-        signal: controller.signal,
-      });
+    const upstreamResponse = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(req.body ?? {}),
+      signal: controller.signal,
+    });
 
-      return {
-        upstreamResponse,
-        contentType: upstreamResponse.headers.get('content-type'),
-        responseBody: await upstreamResponse.text(),
-      };
-    };
+    const contentType = upstreamResponse.headers.get('content-type');
+    const responseBody = await upstreamResponse.text();
 
-    let upstreamResult = await callEndpoint(upstreamPath);
-
-    if (
-      upstreamResult.upstreamResponse.status === 404
-      && fallbackUpstreamPath
-      && fallbackUpstreamPath !== upstreamPath
-    ) {
-      console.warn(
-        `[proxy] Upstream 404 on ${upstreamPath}. Retrying with fallback ${fallbackUpstreamPath}`,
-      );
-      upstreamResult = await callEndpoint(fallbackUpstreamPath);
+    if (contentType) {
+      res.setHeader('Content-Type', contentType);
     }
 
-    if (upstreamResult.contentType) {
-      res.setHeader('Content-Type', upstreamResult.contentType);
-    }
-
-    res.status(upstreamResult.upstreamResponse.status).send(upstreamResult.responseBody);
+    res.status(upstreamResponse.status).send(responseBody);
   } catch (error) {
     const isTimeout = error?.name === 'AbortError';
     console.error(`[proxy] Error calling ${endpoint}:`, error);
@@ -180,16 +146,11 @@ app.post('/api/acreditacion/carpetas/crear', async (req, res) => {
 });
 
 app.post('/api/acreditacion/asignar-folder', async (req, res) => {
-  await proxyLegacyAcreditacionPost(req, res, '/asignar-folder', {
-    baseUrl: ACREDITACION_ASIGNAR_FOLDER_API_BASE_URL,
-  });
+  await proxyLegacyAcreditacionPost(req, res, '/asignar-folder');
 });
 
 app.post('/api/acreditacion/documentos/subir', async (req, res) => {
-  await proxyLegacyAcreditacionPost(req, res, '/documentos/subir', {
-    baseUrl: ACREDITACION_DOCUMENTOS_API_BASE_URL,
-    fallbackUpstreamPath: '/api/acreditacion/documentos/subir',
-  });
+  await proxyLegacyAcreditacionPost(req, res, '/api/acreditacion/documentos/subir');
 });
 
 app.post('/api/acreditacion/adendas/jobs', (req, res) => {

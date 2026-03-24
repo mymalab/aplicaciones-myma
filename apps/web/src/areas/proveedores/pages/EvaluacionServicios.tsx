@@ -54,7 +54,6 @@ const EvaluacionServicios: React.FC = () => {
   const [successMessage, setSuccessMessage] = useState<string | null>(null); // Mensaje de éxito para el popup
   const [errorMessage, setErrorMessage] = useState<string | null>(null); // Mensaje de error para el popup
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false); // Mostrar popup de confirmación de eliminación
-  const [activeTooltipId, setActiveTooltipId] = useState<string | null>(null);
 
   // Control de permisos avanzados: admin y delete
   const isAdmin = hasPermission(`${AreaId.PROVEEDORES}:admin`);
@@ -98,29 +97,6 @@ const EvaluacionServicios: React.FC = () => {
   const getAreaPath = (path: string) => {
     return `/app/area/${AreaId.PROVEEDORES}/${path}`;
   };
-
-  useEffect(() => {
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target as HTMLElement | null;
-      if (!target?.closest('[data-tooltip-root="evaluacion-criterio"]')) {
-        setActiveTooltipId(null);
-      }
-    };
-
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setActiveTooltipId(null);
-      }
-    };
-
-    document.addEventListener('pointerdown', handlePointerDown);
-    document.addEventListener('keydown', handleEscape);
-
-    return () => {
-      document.removeEventListener('pointerdown', handlePointerDown);
-      document.removeEventListener('keydown', handleEscape);
-    };
-  }, []);
 
   // Cargar proveedores
   useEffect(() => {
@@ -1798,7 +1774,7 @@ const EvaluacionServicios: React.FC = () => {
                     </span>
                     <h2 className="text-lg font-bold text-[#111318]">Antecedentes</h2>
                   </div>
-                  <p className="text-sm text-gray-500 ml-0 sm:ml-10">
+                  <p className="text-sm text-gray-500 ml-10">
                     Información general del servicio y proveedor
                   </p>
                 </div>
@@ -1926,7 +1902,7 @@ const EvaluacionServicios: React.FC = () => {
 
                   <div>
                     <label className="block text-sm font-medium text-[#111318] mb-2">
-                      Nombre de servicio
+                      Nombre de proyecto
                     </label>
                     <input
                       type="text"
@@ -1935,7 +1911,7 @@ const EvaluacionServicios: React.FC = () => {
                       onChange={handleChange}
                       disabled={!isEditMode}
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition-all disabled:bg-gray-100 disabled:cursor-not-allowed"
-                      placeholder="Nombre del servicio"
+                      placeholder="Nombre del proyecto"
                     />
                   </div>
 
@@ -2093,9 +2069,9 @@ const EvaluacionServicios: React.FC = () => {
               </div>
 
               {/* 2. Evaluación de Criterios */}
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200/40 p-4 sm:p-6">
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200/40 p-6">
                 <div className="mb-4">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-1">
+                    <div className="flex items-center justify-between mb-1">
                     <div className="flex items-center gap-2">
                       <span className="w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center font-bold text-sm">
                         2
@@ -2103,7 +2079,7 @@ const EvaluacionServicios: React.FC = () => {
                       <h2 className="text-lg font-bold text-[#111318]">Evaluación de Criterios</h2>
                     </div>
                     {evaluacionTotal !== null && (
-                      <div className="text-left sm:text-right max-w-xs">
+                      <div className="text-right max-w-xs">
                         <div className="text-2xl font-bold text-primary">{evaluacionTotal}%</div>
                         <div className="text-xs text-gray-500">Resultado</div>
                         {detalleCalculoEvaluacion && (
@@ -2118,7 +2094,7 @@ const EvaluacionServicios: React.FC = () => {
                       </div>
                     )}
                   </div>
-                  <p className="text-sm text-gray-500 ml-0 sm:ml-10">
+                  <p className="text-sm text-gray-500 ml-10">
                     Criterios detallados según la clasificación de desempeño
                   </p>
                 </div>
@@ -2145,16 +2121,16 @@ const EvaluacionServicios: React.FC = () => {
                     const valorMultiplicacion = getValorMultiplicacion(criterio.id, criterio.valor);
                     
                     return (
-                      <div key={criterio.id} className="border border-gray-200 rounded-lg p-3 sm:p-4">
-                        <div className="flex flex-col gap-2 mb-3 sm:flex-row sm:items-start sm:justify-between">
-                          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                            <span className="font-medium text-[#111318] break-words">{criterio.nombre}</span>
+                      <div key={criterio.id} className="border border-gray-200 rounded-lg p-4">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-[#111318]">{criterio.nombre}</span>
                             {!isTerreno && (
-                              <span className="text-xs sm:text-sm text-gray-500">PESO: {criterio.peso}%</span>
+                              <span className="text-sm text-gray-500">PESO: {criterio.peso}%</span>
                             )}
                           </div>
                           {valorMultiplicacion !== null && (
-                            <div className="text-left sm:text-right shrink-0">
+                            <div className="text-right">
                               <div className="text-sm font-semibold text-primary">
                                 {valorMultiplicacion.toFixed(4)}
                               </div>
@@ -2165,9 +2141,8 @@ const EvaluacionServicios: React.FC = () => {
                         {isTerreno ? (
                           // Renderizado especial para terreno con A, B, C
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                            {(['C', 'B', 'A'] as const).map((nivel) => {
+                            {(['A', 'B', 'C'] as const).map((nivel) => {
                               const estaSeleccionado = criterio.valor === nivel;
-                              const tooltipIdTerreno = `${criterio.id}-terreno-${nivel}`;
                               
                               return (
                                 <label
@@ -2191,31 +2166,9 @@ const EvaluacionServicios: React.FC = () => {
                                   <div className="flex-1">
                                     <div className="flex items-center gap-2 mb-1">
                                       <span className="text-sm font-semibold text-[#111318]">{nivel}</span>
-                                      <div className="relative" data-tooltip-root="evaluacion-criterio">
-                                        <button
-                                          type="button"
-                                          onClick={(event) => {
-                                            event.preventDefault();
-                                            event.stopPropagation();
-                                            setActiveTooltipId((current) => (current === tooltipIdTerreno ? null : tooltipIdTerreno));
-                                          }}
-                                          onFocus={() => setActiveTooltipId(tooltipIdTerreno)}
-                                          onBlur={() =>
-                                            setActiveTooltipId((current) => (current === tooltipIdTerreno ? null : current))
-                                          }
-                                          className="inline-flex h-6 w-6 items-center justify-center rounded-full text-green-600 transition-colors hover:bg-green-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500/60"
-                                          aria-label={`Mostrar descripción del nivel ${nivel}`}
-                                          aria-expanded={activeTooltipId === tooltipIdTerreno}
-                                        >
-                                          <span className="material-symbols-outlined text-base leading-none">info</span>
-                                        </button>
-                                        <div
-                                          className={`pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 w-[min(20rem,calc(100vw-3rem))] -translate-x-1/2 rounded-lg bg-gray-900 p-3 text-xs text-white shadow-lg transition-all sm:left-0 sm:w-80 sm:translate-x-0 ${
-                                            activeTooltipId === tooltipIdTerreno
-                                              ? 'visible opacity-100'
-                                              : 'invisible opacity-0 group-hover:visible group-hover:opacity-100'
-                                          }`}
-                                        >
+                                      <div className="relative">
+                                        <span className="material-symbols-outlined text-green-600 text-base cursor-help">info</span>
+                                        <div className="absolute left-0 bottom-full mb-2 w-80 p-3 bg-gray-900 text-white text-xs rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 pointer-events-none border border-transparent outline-none">
                                           {descripcionesTerreno[nivel]}
                                         </div>
                                       </div>
@@ -2228,14 +2181,14 @@ const EvaluacionServicios: React.FC = () => {
                           </div>
                         ) : (
                           // Renderizado normal para otros criterios
-                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-                            {(['MUY_BAJO', 'BAJO', 'MEDIO', 'ALTO'] as const).map((nivel) => {
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                            {(['ALTO', 'MEDIO', 'BAJO', 'MUY_BAJO'] as const).map((nivel) => {
+                              const valorOpcion = getValorOpcion(criterio.id, nivel);
                               const descripcionOpcion = getDescripcionOpcion(criterio.id, nivel);
-                              const tooltipId = `${criterio.id}-${nivel}`;
                               return (
                                 <label
                                   key={nivel}
-                                  className={`relative flex items-start sm:items-center gap-2 p-3 border-2 rounded-lg transition-colors group ${
+                                  className={`relative flex items-center gap-2 p-3 border-2 rounded-lg transition-colors group ${
                                     isEditMode ? 'cursor-pointer' : 'cursor-not-allowed'
                                   } ${
                                     criterio.valor === nivel
@@ -2251,36 +2204,21 @@ const EvaluacionServicios: React.FC = () => {
                                     disabled={!isEditMode}
                                     className="text-primary focus:ring-primary disabled:cursor-not-allowed"
                                   />
-                                  <div className="flex items-center gap-1 min-w-0">
-                                    <span className="text-sm text-[#111318] leading-tight">
+                                  <div className="flex items-center gap-1">
+                                    <span className="text-sm text-[#111318]">
                                       {opciones[nivel]}
+                                      {valorOpcion !== null && (
+                                        <span className="text-xs text-gray-500 ml-1">
+                                          ({valorOpcion})
+                                        </span>
+                                      )}
                                     </span>
                                     {descripcionOpcion && (
-                                      <div className="relative" data-tooltip-root="evaluacion-criterio">
-                                        <button
-                                          type="button"
-                                          onClick={(event) => {
-                                            event.preventDefault();
-                                            event.stopPropagation();
-                                            setActiveTooltipId((current) => (current === tooltipId ? null : tooltipId));
-                                          }}
-                                          onFocus={() => setActiveTooltipId(tooltipId)}
-                                          onBlur={() =>
-                                            setActiveTooltipId((current) => (current === tooltipId ? null : current))
-                                          }
-                                          className="inline-flex h-6 w-6 items-center justify-center rounded-full text-blue-600 transition-colors hover:bg-blue-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60"
-                                          aria-label={`Mostrar detalle para ${opciones[nivel]}`}
-                                          aria-expanded={activeTooltipId === tooltipId}
-                                        >
-                                          <span className="material-symbols-outlined text-base leading-none">info</span>
-                                        </button>
-                                        <div
-                                          className={`pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 w-[min(20rem,calc(100vw-3rem))] -translate-x-1/2 rounded-lg bg-gray-900 p-3 text-xs text-white shadow-lg transition-all sm:left-0 sm:w-80 sm:translate-x-0 ${
-                                            activeTooltipId === tooltipId
-                                              ? 'visible opacity-100'
-                                              : 'invisible opacity-0 group-hover:visible group-hover:opacity-100'
-                                          }`}
-                                        >
+                                      <div className="relative">
+                                        <span className="material-symbols-outlined text-blue-600 text-base cursor-help">
+                                          info
+                                        </span>
+                                        <div className="absolute left-0 bottom-full mb-2 w-80 p-3 bg-gray-900 text-white text-xs rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 pointer-events-none border border-transparent outline-none">
                                           {descripcionOpcion}
                                         </div>
                                       </div>
@@ -2295,7 +2233,7 @@ const EvaluacionServicios: React.FC = () => {
                     );
                   })}
                   
-                  {/* Checkbox "¿Se fue a terreno?" */}
+                  {/* Checkbox "¿Va a terreno?" */}
                   <div className="border border-gray-200 rounded-lg p-4">
                     <label className={`flex items-center gap-2 ${isEditMode ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
                       <input
@@ -2307,7 +2245,7 @@ const EvaluacionServicios: React.FC = () => {
                         className="w-4 h-4 text-primary border-gray-300 rounded focus:ring-primary disabled:cursor-not-allowed"
                       />
                       <span className="text-sm font-medium text-gray-700">
-                        ¿Se fue a terreno?
+                        ¿Va a terreno?
                       </span>
                     </label>
                     <p className="text-xs text-gray-500 mt-2 ml-6">
@@ -2326,7 +2264,7 @@ const EvaluacionServicios: React.FC = () => {
                     </span>
                     <h2 className="text-lg font-bold text-[#111318]">Observaciones</h2>
                   </div>
-                  <p className="text-sm text-gray-500 ml-0 sm:ml-10">
+                  <p className="text-sm text-gray-500 ml-10">
                     Comentarios adicionales y justificación del puntaje
                   </p>
                 </div>
@@ -2601,3 +2539,4 @@ const EvaluacionServicios: React.FC = () => {
 };
 
 export default EvaluacionServicios;
+

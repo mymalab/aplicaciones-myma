@@ -1,14 +1,6 @@
 {
   "$schema": "https://turbo.build/schema.json",
-  "globalEnv": [
-    "VITE_AUTH_REDIRECT_URL",
-    "VITE_SUPABASE_URL",
-    "VITE_SUPABASE_ANON_KEY",
-    "ACREDITACION_LEGACY_API_BASE_URL",
-    "ICSARA_API_BASE_URL",
-    "ICSARA_API_PREFIX"
-  ],
-  "globalDependencies": ["**/.env", "**/.env.*local", "**/.env.production", "**/.env.production.local"],
+  "globalDependencies": ["**/.env.*local"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
@@ -26,4 +18,5 @@
     }
   }
 }
+
 

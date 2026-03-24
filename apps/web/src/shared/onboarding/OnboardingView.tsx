@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/useAuth';
 import { fetchAvailableModules, formatModuleName, RBACModule } from '../rbac/modulesService';
 import {
@@ -6,10 +7,17 @@ import {
   createAccessRequests,
 } from '../rbac/accessRequestsService';
 
+type OnboardingViewMode = 'fullscreen' | 'embedded';
+
+interface OnboardingViewProps {
+  mode?: OnboardingViewMode;
+}
+
 /**
  * Vista de onboarding que se muestra cuando el usuario no tiene permisos
  */
-const OnboardingView: React.FC = () => {
+const OnboardingView: React.FC<OnboardingViewProps> = ({ mode = 'fullscreen' }) => {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const [availableModules, setAvailableModules] = useState<RBACModule[]>([]);
   const [loadingModules, setLoadingModules] = useState(true);
@@ -82,9 +90,27 @@ const OnboardingView: React.FC = () => {
     }
   };
 
+  const isEmbedded = mode === 'embedded';
+  const containerStyle = isEmbedded ? { minHeight: 'calc(100vh - 81px)' } : undefined;
+  const containerClassName = isEmbedded
+    ? 'w-full bg-gradient-to-br from-teal-50 via-blue-50 to-indigo-50 flex items-center justify-center p-4 md:p-6'
+    : 'min-h-screen bg-gradient-to-br from-teal-50 via-blue-50 to-indigo-50 flex items-center justify-center p-4';
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-teal-50 via-blue-50 to-indigo-50 flex items-center justify-center p-4">
-      <div className="max-w-2xl w-full bg-white rounded-2xl shadow-xl p-8 md:p-10">
+    <div className={containerClassName} style={containerStyle}>
+      <div className="w-full max-w-2xl">
+        {isEmbedded && (
+          <button
+            type="button"
+            onClick={() => navigate('/app')}
+            className="mb-4 inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-[#111318] shadow-sm hover:bg-gray-50 transition-colors"
+          >
+            <span className="material-symbols-outlined text-base">arrow_back</span>
+            Volver al inicio
+          </button>
+        )}
+
+        <div className="w-full bg-white rounded-2xl shadow-xl p-8 md:p-10">
         {/* Header */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-gradient-to-br from-teal-500 to-blue-500 mb-4 shadow-lg">
@@ -305,6 +331,7 @@ const OnboardingView: React.FC = () => {
             </p>
           </div>
         )}
+      </div>
       </div>
     </div>
   );

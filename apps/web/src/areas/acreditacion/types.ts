@@ -327,7 +327,6 @@ export interface SolicitudAcreditacion {
   legal_nombre?: string; // Nombre del Responsable Legal
   drive_folder_id?: string; // ID de la carpeta de Google Drive del proyecto
   drive_folder_url?: string; // URL de la carpeta de Google Drive del proyecto
-  fecha_finalizacion?: string | null;
   created_at: string;
   updated_at?: string;
 }

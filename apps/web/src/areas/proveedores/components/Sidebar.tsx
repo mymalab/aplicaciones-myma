@@ -141,16 +141,8 @@ const ProveedoresSidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activeVie
   };
 
   const handleActualesClick = () => {
-    const targetPath = getAreaPath('actuales');
-    navigate(targetPath);
+    navigate(getAreaPath('actuales'));
     onClose();
-    // Fallback defensivo: si por alguna razon la navegacion SPA no cambia la URL, forzarla.
-    setTimeout(() => {
-      const currentPath = window.location.pathname;
-      if (currentPath !== targetPath) {
-        window.location.assign(targetPath);
-      }
-    }, 150);
   };
 
   const handleEvaluacionClick = () => {
@@ -264,7 +256,6 @@ const ProveedoresSidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activeVie
 
               {/* Proveedores Actuales */}
               <button
-                type="button"
                 onClick={handleActualesClick}
                 className={`group flex items-center justify-center p-3 rounded-lg w-full aspect-square transition-colors relative ${
                   isActualesActive
@@ -295,7 +286,7 @@ const ProveedoresSidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activeVie
                     ? 'bg-primary text-white hover:bg-primary-hover'
                     : 'text-[#616f89] hover:bg-gray-100'
                 }`}
-                title="Evaluaciones de servicios"
+                title="Evaluaciones Tabla"
               >
                 <span className={`material-symbols-outlined text-2xl pointer-events-none ${isEvaluacionesTablaActive ? 'fill' : ''}`}>
                   table_chart
@@ -307,7 +298,7 @@ const ProveedoresSidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activeVie
                       : 'bg-gray-900 text-white opacity-0 group-hover:opacity-100'
                   }`}
                 >
-                  Evaluaciones de servicios
+                  Evaluaciones Tabla
                 </span>
               </button>
 

@@ -8,7 +8,7 @@ interface AreaGuardProps {
 }
 
 /**
- * Componente que protege rutas basado en acceso al área
+ * Protege las rutas por area segun los permisos del usuario.
  */
 const AreaGuard: React.FC<AreaGuardProps> = ({ children }) => {
   const { areaId } = useParams<{ areaId: string }>();
@@ -26,16 +26,14 @@ const AreaGuard: React.FC<AreaGuardProps> = ({ children }) => {
   }
 
   if (!areaId || !hasAccessToArea(areaId as AreaId)) {
-    // Si no tiene acceso a esta área, redirigir a la primera área disponible
     if (areas.length > 0) {
       return <Navigate to={`/app/area/${areas[0]}`} replace />;
     }
-    // Si no tiene acceso a ninguna área, redirigir al login
-    return <Navigate to="/login" replace />;
+
+    return <Navigate to="/app/onboarding" replace />;
   }
 
   return <>{children}</>;
 };
 
 export default AreaGuard;
-

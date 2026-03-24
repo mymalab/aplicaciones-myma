@@ -8,6 +8,8 @@ export interface TutorialVideo {
   titulo: string;
   descripcion: string;
   modulo: string;
+  moduleKey: string;
+  necesitaPermisos: boolean;
   url: string;
   embedUrl: string | null;
   thumbnailUrl: string | null;
@@ -52,6 +54,32 @@ const normalizeVideoUrl = (rawUrl: string): string => {
   }
 
   return trimmed;
+};
+
+const parseNeedsPermissionsValue = (value: unknown): boolean => {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+
+  if (typeof value === 'number') {
+    return value !== 0;
+  }
+
+  const normalized = `${value ?? ''}`.trim().toLowerCase();
+  if (!normalized) {
+    // Valor por defecto seguro: requiere permisos.
+    return true;
+  }
+
+  if (['false', 'f', '0', 'no', 'n', 'off'].includes(normalized)) {
+    return false;
+  }
+
+  if (['true', 't', '1', 'si', 'sí', 'yes', 'y', 'on'].includes(normalized)) {
+    return true;
+  }
+
+  return true;
 };
 
 const getNumberValue = (row: Record<string, any>, keys: string[], fallback = Number.MAX_SAFE_INTEGER): number => {
@@ -226,12 +254,17 @@ const mapRowToTutorial = (row: Record<string, any>): TutorialVideo | null => {
 
   const normalizedUrl = normalizeVideoUrl(url);
   const provider = detectProvider(normalizedUrl);
+  const necesitaPermisos = parseNeedsPermissionsValue(
+    row.necesita_permisos ?? row.requires_permissions ?? row.requiere_permiso
+  );
 
   return {
     id: `${row.id ?? row.tutorial_id ?? row.id_tutorial ?? url}`,
     titulo,
     descripcion,
     modulo,
+    moduleKey: normalizeCompactText(modulo),
+    necesitaPermisos,
     url: normalizedUrl,
     embedUrl: resolveEmbedUrl(normalizedUrl, provider),
     thumbnailUrl: getStringValue(row, ['miniatura_url', 'thumbnail_url', 'imagen_url', 'poster_url']) || null,
@@ -240,7 +273,7 @@ const mapRowToTutorial = (row: Record<string, any>): TutorialVideo | null => {
   };
 };
 
-export const fetchTutorialVideosByArea = async (areaId: AreaId): Promise<TutorialVideo[]> => {
+export const fetchTutorialVideos = async (): Promise<TutorialVideo[]> => {
   const { data, error } = await supabase.from('dim_tutorial_video').select('*');
 
   if (error) {
@@ -255,11 +288,15 @@ export const fetchTutorialVideosByArea = async (areaId: AreaId): Promise<Tutoria
   return data
     .map((row) => mapRowToTutorial(row as Record<string, any>))
     .filter((video): video is TutorialVideo => Boolean(video))
-    .filter((video) => matchesAreaModule(video.modulo, areaId))
     .sort((a, b) => {
       if (a.orden !== b.orden) {
         return a.orden - b.orden;
       }
       return a.titulo.localeCompare(b.titulo, 'es');
     });
+};
+
+export const fetchTutorialVideosByArea = async (areaId: AreaId): Promise<TutorialVideo[]> => {
+  const videos = await fetchTutorialVideos();
+  return videos.filter((video) => matchesAreaModule(video.modulo, areaId));
 };
