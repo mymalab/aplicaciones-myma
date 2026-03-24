@@ -646,7 +646,380 @@ export const fetchSolicitudesAcreditacion = async (): Promise<SolicitudAcreditac
   return data || [];
 };
 
-// Función para transformar solicitudes a formato de galería de proyectos
+// Tipos y funciones para KPI del dashboard
+export interface DashboardKpis {
+  totalSolicitudes: number;
+  totalTasksCompleted: number;
+  totalTasksAll: number;
+  tasaCumplimiento: number;
+  solicitudesPendientes: number;
+  solicitudesAtrasadas: number;
+  tiempoPromedioDias: number;
+  proyectosFinalizados: number;
+}
+
+export interface DashboardTiempoMensual {
+  mes: string;
+  promedio: number | null;
+  minimo: number | null;
+  maximo: number | null;
+  cantidad: number;
+}
+
+export interface DashboardActividadMensual {
+  mes: string;
+  solicitudes: number;
+  completadas: number;
+  pendientes: number;
+  atrasadas: number;
+  cumplimiento: number;
+}
+
+export type DashboardResponsableTarea = 'JPRO' | 'EPR' | 'RRHH' | 'Legal' | 'Otros';
+
+export interface DashboardPendientesResponsableItem {
+  responsable: DashboardResponsableTarea;
+  cantidad: number;
+}
+
+const DASHBOARD_MONTH_LABELS = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+const DASHBOARD_RESPONSABLE_ORDER: DashboardResponsableTarea[] = [
+  'JPRO',
+  'EPR',
+  'RRHH',
+  'Legal',
+  'Otros',
+];
+const DASHBOARD_PENDING_TASK_STATUSES = new Set(['pendiente', 'en proceso']);
+
+const normalizeDashboardStatus = (status: string | null | undefined): string =>
+  (status || '').toLowerCase().trim();
+
+const isDashboardFinishedStatus = (status: string | null | undefined): boolean => {
+  const normalized = normalizeDashboardStatus(status);
+  return normalized.includes('finalizado') || normalized.includes('finalizada');
+};
+
+const isDashboardCancelledStatus = (status: string | null | undefined): boolean => {
+  const normalized = normalizeDashboardStatus(status);
+  return normalized.includes('cancelado') || normalized.includes('cancelada');
+};
+
+const isDashboardOverdueStatus = (status: string | null | undefined): boolean => {
+  const normalized = normalizeDashboardStatus(status);
+  return normalized.includes('atrasado') || normalized.includes('atrasada');
+};
+
+const isDashboardPendingTaskStatus = (status: string | null | undefined): boolean =>
+  DASHBOARD_PENDING_TASK_STATUSES.has(normalizeDashboardStatus(status));
+
+const normalizeDashboardResponsable = (
+  responsable: string | null | undefined
+): DashboardResponsableTarea => {
+  const normalized = (responsable || '').trim().toUpperCase();
+
+  if (normalized === 'JPRO') return 'JPRO';
+  if (normalized === 'EPR') return 'EPR';
+  if (normalized === 'RRHH') return 'RRHH';
+  if (normalized === 'LEGAL') return 'Legal';
+
+  return 'Otros';
+};
+
+// KPI del dashboard usando solo tablas reales (sin tareas generadas por fallback)
+export const fetchDashboardKpis = async (): Promise<DashboardKpis> => {
+  const [solicitudesResult, requerimientosResult] = await Promise.all([
+    supabase
+      .from('fct_acreditacion_solicitud')
+      .select('id, estado_solicitud_acreditacion, created_at'),
+    supabase
+      .from('brg_acreditacion_solicitud_requerimiento')
+      .select('id, estado'),
+  ]);
+
+  if (solicitudesResult.error) {
+    console.error('Error fetching dashboard solicitudes:', solicitudesResult.error);
+    throw solicitudesResult.error;
+  }
+
+  if (requerimientosResult.error) {
+    console.error('Error fetching dashboard requerimientos:', requerimientosResult.error);
+    throw requerimientosResult.error;
+  }
+
+  const solicitudes = solicitudesResult.data || [];
+  const requerimientos = requerimientosResult.data || [];
+
+  const totalSolicitudes = solicitudes.length;
+  const totalTasksAll = requerimientos.length;
+  const totalTasksCompleted = requerimientos.filter((req: any) => {
+    return normalizeDashboardStatus(req.estado) === 'completado';
+  }).length;
+
+  const tasaCumplimiento = totalTasksAll > 0
+    ? Math.round((totalTasksCompleted / totalTasksAll) * 100)
+    : 0;
+
+  const solicitudesPendientes = solicitudes.filter((solicitud: any) => {
+    const status = solicitud.estado_solicitud_acreditacion || '';
+    return !isDashboardFinishedStatus(status) && !isDashboardCancelledStatus(status);
+  }).length;
+
+  const solicitudesAtrasadas = solicitudes.filter((solicitud: any) => {
+    const status = solicitud.estado_solicitud_acreditacion || '';
+    return isDashboardOverdueStatus(status);
+  }).length;
+
+  const solicitudesFinalizadas = solicitudes.filter((solicitud: any) => {
+    const status = solicitud.estado_solicitud_acreditacion || '';
+    return isDashboardFinishedStatus(status);
+  });
+
+  const finishedDurations = solicitudesFinalizadas
+    .map((solicitud: any) => {
+      if (!solicitud.created_at) return null;
+
+      const createdAt = new Date(solicitud.created_at);
+      if (Number.isNaN(createdAt.getTime())) return null;
+
+      const diffInDays = Math.floor((Date.now() - createdAt.getTime()) / (1000 * 60 * 60 * 24));
+      return Math.max(diffInDays, 0);
+    })
+    .filter((duration: number | null): duration is number => duration !== null);
+
+  const tiempoPromedioDias = finishedDurations.length > 0
+    ? Math.round(
+        finishedDurations.reduce((sum, duration) => sum + duration, 0) /
+          finishedDurations.length
+      )
+    : 0;
+
+  return {
+    totalSolicitudes,
+    totalTasksCompleted,
+    totalTasksAll,
+    tasaCumplimiento,
+    solicitudesPendientes,
+    solicitudesAtrasadas,
+    tiempoPromedioDias,
+    proyectosFinalizados: solicitudesFinalizadas.length,
+  };
+};
+
+// Serie mensual de tiempos de acreditacion (anio actual por defecto)
+export const fetchDashboardTiemposEvolucionAnual = async (
+  year: number = new Date().getFullYear()
+): Promise<DashboardTiempoMensual[]> => {
+  const startOfYear = new Date(Date.UTC(year, 0, 1)).toISOString();
+  const startOfNextYear = new Date(Date.UTC(year + 1, 0, 1)).toISOString();
+
+  const { data, error } = await supabase
+    .from('fct_acreditacion_solicitud')
+    .select('created_at, fecha_finalizacion')
+    .not('fecha_finalizacion', 'is', null)
+    .gte('fecha_finalizacion', startOfYear)
+    .lt('fecha_finalizacion', startOfNextYear);
+
+  if (error) {
+    console.error('Error fetching dashboard tiempos evolucion:', error);
+    throw error;
+  }
+
+  const monthlyDurations: number[][] = Array.from({ length: 12 }, () => []);
+
+  (data || []).forEach((solicitud: any) => {
+    if (!solicitud.created_at || !solicitud.fecha_finalizacion) return;
+
+    const createdAt = new Date(solicitud.created_at);
+    const finishedAt = new Date(solicitud.fecha_finalizacion);
+
+    if (Number.isNaN(createdAt.getTime()) || Number.isNaN(finishedAt.getTime())) return;
+
+    const monthIndex = finishedAt.getUTCMonth();
+    if (monthIndex < 0 || monthIndex > 11) return;
+
+    const diffInDays = Math.floor((finishedAt.getTime() - createdAt.getTime()) / (1000 * 60 * 60 * 24));
+    monthlyDurations[monthIndex].push(Math.max(0, diffInDays));
+  });
+
+  return DASHBOARD_MONTH_LABELS.map((mes, index) => {
+    const durations = monthlyDurations[index];
+
+    if (durations.length === 0) {
+      return {
+        mes,
+        promedio: null,
+        minimo: null,
+        maximo: null,
+        cantidad: 0,
+      };
+    }
+
+    const total = durations.reduce((sum, value) => sum + value, 0);
+    const promedio = Math.round(total / durations.length);
+    const minimo = Math.min(...durations);
+    const maximo = Math.max(...durations);
+
+    return {
+      mes,
+      promedio,
+      minimo,
+      maximo,
+      cantidad: durations.length,
+    };
+  });
+};
+
+// Serie mensual de actividad (anio actual por defecto)
+export const fetchDashboardActividadEvolucionAnual = async (
+  year: number = new Date().getFullYear()
+): Promise<DashboardActividadMensual[]> => {
+  const startOfYear = new Date(Date.UTC(year, 0, 1)).toISOString();
+  const startOfNextYear = new Date(Date.UTC(year + 1, 0, 1)).toISOString();
+
+  const [createdResult, completedResult, openByDeadlineResult] = await Promise.all([
+    supabase
+      .from('fct_acreditacion_solicitud')
+      .select('created_at')
+      .not('created_at', 'is', null)
+      .gte('created_at', startOfYear)
+      .lt('created_at', startOfNextYear),
+    supabase
+      .from('fct_acreditacion_solicitud')
+      .select('fecha_finalizacion')
+      .not('fecha_finalizacion', 'is', null)
+      .gte('fecha_finalizacion', startOfYear)
+      .lt('fecha_finalizacion', startOfNextYear),
+    supabase
+      .from('fct_acreditacion_solicitud')
+      .select('fecha_inicio_terreno, fecha_finalizacion')
+      .is('fecha_finalizacion', null)
+      .not('fecha_inicio_terreno', 'is', null)
+      .gte('fecha_inicio_terreno', startOfYear)
+      .lt('fecha_inicio_terreno', startOfNextYear),
+  ]);
+
+  if (createdResult.error) {
+    console.error('Error fetching dashboard actividad (created_at):', createdResult.error);
+    throw createdResult.error;
+  }
+
+  if (completedResult.error) {
+    console.error(
+      'Error fetching dashboard actividad (fecha_finalizacion):',
+      completedResult.error
+    );
+    throw completedResult.error;
+  }
+
+  if (openByDeadlineResult.error) {
+    console.error(
+      'Error fetching dashboard actividad (pendientes/atrasadas):',
+      openByDeadlineResult.error
+    );
+    throw openByDeadlineResult.error;
+  }
+
+  const solicitudesByMonth = Array.from({ length: 12 }, () => 0);
+  const completadasByMonth = Array.from({ length: 12 }, () => 0);
+  const pendientesByMonth = Array.from({ length: 12 }, () => 0);
+  const atrasadasByMonth = Array.from({ length: 12 }, () => 0);
+
+  const now = new Date();
+  const todayUtcStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+
+  (createdResult.data || []).forEach((row: any) => {
+    if (!row.created_at) return;
+    const createdAt = new Date(row.created_at);
+    if (Number.isNaN(createdAt.getTime())) return;
+
+    const monthIndex = createdAt.getUTCMonth();
+    if (monthIndex < 0 || monthIndex > 11) return;
+    solicitudesByMonth[monthIndex] += 1;
+  });
+
+  (completedResult.data || []).forEach((row: any) => {
+    if (!row.fecha_finalizacion) return;
+    const finishedAt = new Date(row.fecha_finalizacion);
+    if (Number.isNaN(finishedAt.getTime())) return;
+
+    const monthIndex = finishedAt.getUTCMonth();
+    if (monthIndex < 0 || monthIndex > 11) return;
+    completadasByMonth[monthIndex] += 1;
+  });
+
+  (openByDeadlineResult.data || []).forEach((row: any) => {
+    if (!row.fecha_inicio_terreno || row.fecha_finalizacion) return;
+    const deadline = new Date(row.fecha_inicio_terreno);
+    if (Number.isNaN(deadline.getTime())) return;
+
+    const monthIndex = deadline.getUTCMonth();
+    if (monthIndex < 0 || monthIndex > 11) return;
+
+    const deadlineUtcStart = Date.UTC(
+      deadline.getUTCFullYear(),
+      deadline.getUTCMonth(),
+      deadline.getUTCDate()
+    );
+
+    if (deadlineUtcStart < todayUtcStart) {
+      atrasadasByMonth[monthIndex] += 1;
+      return;
+    }
+
+    pendientesByMonth[monthIndex] += 1;
+  });
+
+  return DASHBOARD_MONTH_LABELS.map((mes, index) => {
+    const solicitudes = solicitudesByMonth[index];
+    const completadas = completadasByMonth[index];
+    const pendientes = pendientesByMonth[index];
+    const atrasadas = atrasadasByMonth[index];
+    const cumplimiento =
+      solicitudes > 0 ? Math.round((completadas / solicitudes) * 100) : 0;
+
+    return {
+      mes,
+      solicitudes,
+      completadas,
+      pendientes,
+      atrasadas,
+      cumplimiento,
+    };
+  });
+};
+
+// Distribucion actual de tareas pendientes por responsable (sin limite anual)
+export const fetchDashboardTareasPendientesPorResponsable = async (): Promise<
+  DashboardPendientesResponsableItem[]
+> => {
+  const { data, error } = await supabase
+    .from('brg_acreditacion_solicitud_requerimiento')
+    .select('responsable, estado');
+
+  if (error) {
+    console.error('Error fetching dashboard pendientes por responsable:', error);
+    throw error;
+  }
+
+  const counts = new Map<DashboardResponsableTarea, number>(
+    DASHBOARD_RESPONSABLE_ORDER.map((responsable) => [responsable, 0])
+  );
+
+  (data || []).forEach((row: any) => {
+    if (!isDashboardPendingTaskStatus(row.estado)) return;
+
+    const responsable = normalizeDashboardResponsable(row.responsable);
+    counts.set(responsable, (counts.get(responsable) || 0) + 1);
+  });
+
+  return DASHBOARD_RESPONSABLE_ORDER.map((responsable) => ({
+    responsable,
+    cantidad: counts.get(responsable) || 0,
+  }));
+};
+
+// Funcion para transformar solicitudes a formato de galeria de proyectos
 export const fetchProjectGalleryItems = async (): Promise<ProjectGalleryItem[]> => {
   const solicitudes = await fetchSolicitudesAcreditacion();
   
