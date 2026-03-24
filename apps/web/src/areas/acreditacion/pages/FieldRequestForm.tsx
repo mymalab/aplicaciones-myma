@@ -45,6 +45,8 @@ interface FieldRequestFormProps {
   };
 }
 
+const DEBUG_OWNER_EMAIL = 'cmansilla@myma.cl';
+
 const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
   onBack,
   mode = 'create',
@@ -136,8 +138,43 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
   const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null);
   const [showDropdownCliente, setShowDropdownCliente] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [solicitudPrueba, setSolicitudPrueba] = useState(true);
+  const [solicitudPrueba, setSolicitudPrueba] = useState(false);
   const [omitirCamposObligatorios, setOmitirCamposObligatorios] = useState(false);
+  const [canUseDebugControls, setCanUseDebugControls] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const resolveDebugAccess = async () => {
+      try {
+        const { data: { user }, error } = await supabase.auth.getUser();
+
+        if (!isMounted) return;
+
+        const email = (user?.email || '').trim().toLowerCase();
+        const hasDebugAccess = !error && email === DEBUG_OWNER_EMAIL;
+
+        setCanUseDebugControls(hasDebugAccess);
+        setSolicitudPrueba(hasDebugAccess);
+        setOmitirCamposObligatorios(false);
+      } catch (error) {
+        if (!isMounted) return;
+        console.warn('No se pudo resolver acceso a controles debug:', error);
+        setCanUseDebugControls(false);
+        setSolicitudPrueba(false);
+        setOmitirCamposObligatorios(false);
+      }
+    };
+
+    resolveDebugAccess();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const effectiveSolicitudPrueba = canUseDebugControls ? solicitudPrueba : false;
+  const effectiveOmitirCamposObligatorios = canUseDebugControls ? omitirCamposObligatorios : false;
 
   useEffect(() => {
     if (!isViewMode || !initialSnapshot) {
@@ -747,7 +784,7 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
         console.warn('Error obteniendo usuario autenticado:', authError);
       }
 
-      if (!omitirCamposObligatorios) {
+      if (!effectiveOmitirCamposObligatorios) {
       if (!PROJECT_CODE_REGEX.test(formData.projectCode)) {
         alert('El codigo de proyecto debe tener formato MY-001-2026.');
         return;
@@ -882,7 +919,7 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
         requiere_acreditar_empresa: requiereAcreditarEmpresa, // Convertir a boolean
         admin_contrato_myma: formData.contractAdmin || null,
         email_usuario: emailUsuario,
-        solicitud_prueba: solicitudPrueba,
+        solicitud_prueba: effectiveSolicitudPrueba,
         estado_solicitud_acreditacion: 'Por asignar requerimientos', // Estado inicial del proyecto
       };
 
@@ -944,7 +981,7 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
         try {
           await enviarIdProyectoN8n(result.id, {
             emailUsuario,
-            solicitudPrueba,
+            solicitudPrueba: effectiveSolicitudPrueba,
           });
           console.log('✅ Payload enviado a Enviar_id_proyecto_n8n');
         } catch (edgeError) {
@@ -1461,7 +1498,7 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
     (formData.requiereAcreditarTrabajadoresMyma !== 'yes' || hasAtLeastOneMymaWorker) &&
     hasCondicionLaboralWhenWorkers;
 
-  const isSubmitDisabled = isSaving || (!areAllRequiredFieldsCompleted && !omitirCamposObligatorios);
+  const isSubmitDisabled = isSaving || (!areAllRequiredFieldsCompleted && !effectiveOmitirCamposObligatorios);
 
   return (
     <div className="layout-container flex h-full grow flex-col">
@@ -1545,7 +1582,7 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
             )}
           </div>
           <div className="hidden lg:flex items-center gap-3">
-            {!isViewMode && (
+            {!isViewMode && canUseDebugControls && (
             <button 
               type="button"
               onClick={fillRandomData}
@@ -1566,7 +1603,7 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} noValidate={omitirCamposObligatorios} className="flex flex-col gap-8 pb-12">
+        <form onSubmit={handleSubmit} noValidate={effectiveOmitirCamposObligatorios} className="flex flex-col gap-8 pb-12">
           <fieldset disabled={isViewMode} className="contents">
           
           {/* Section 1: Identificación de la Solicitud */}
@@ -2571,58 +2608,60 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
               </button>
             ) : (
               <>
-                <div className="w-full sm:mr-auto sm:w-auto flex flex-col gap-2">
-                  <div className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2">
-                    <span className="text-xs font-medium text-gray-600">solicitud_prueba</span>
-                    <button
-                      type="button"
-                      onClick={() => setSolicitudPrueba(true)}
-                      className={`px-2 py-1 rounded-md text-xs font-semibold transition-colors ${
-                        solicitudPrueba
-                          ? 'bg-primary text-white'
-                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                      }`}
-                    >
-                      true
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setSolicitudPrueba(false)}
-                      className={`px-2 py-1 rounded-md text-xs font-semibold transition-colors ${
-                        !solicitudPrueba
-                          ? 'bg-primary text-white'
-                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                      }`}
-                    >
-                      false
-                    </button>
+                {canUseDebugControls && (
+                  <div className="w-full sm:mr-auto sm:w-auto flex flex-col gap-2">
+                    <div className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2">
+                      <span className="text-xs font-medium text-gray-600">solicitud_prueba</span>
+                      <button
+                        type="button"
+                        onClick={() => setSolicitudPrueba(true)}
+                        className={`px-2 py-1 rounded-md text-xs font-semibold transition-colors ${
+                          solicitudPrueba
+                            ? 'bg-primary text-white'
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        }`}
+                      >
+                        true
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSolicitudPrueba(false)}
+                        className={`px-2 py-1 rounded-md text-xs font-semibold transition-colors ${
+                          !solicitudPrueba
+                            ? 'bg-primary text-white'
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        }`}
+                      >
+                        false
+                      </button>
+                    </div>
+                    <div className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2">
+                      <span className="text-xs font-medium text-gray-600">omitir_obligatorios</span>
+                      <button
+                        type="button"
+                        onClick={() => setOmitirCamposObligatorios(true)}
+                        className={`px-2 py-1 rounded-md text-xs font-semibold transition-colors ${
+                          omitirCamposObligatorios
+                            ? 'bg-primary text-white'
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        }`}
+                      >
+                        true
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setOmitirCamposObligatorios(false)}
+                        className={`px-2 py-1 rounded-md text-xs font-semibold transition-colors ${
+                          !omitirCamposObligatorios
+                            ? 'bg-primary text-white'
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        }`}
+                      >
+                        false
+                      </button>
+                    </div>
                   </div>
-                  <div className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2">
-                    <span className="text-xs font-medium text-gray-600">omitir_obligatorios</span>
-                    <button
-                      type="button"
-                      onClick={() => setOmitirCamposObligatorios(true)}
-                      className={`px-2 py-1 rounded-md text-xs font-semibold transition-colors ${
-                        omitirCamposObligatorios
-                          ? 'bg-primary text-white'
-                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                      }`}
-                    >
-                      true
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setOmitirCamposObligatorios(false)}
-                      className={`px-2 py-1 rounded-md text-xs font-semibold transition-colors ${
-                        !omitirCamposObligatorios
-                          ? 'bg-primary text-white'
-                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                      }`}
-                    >
-                      false
-                    </button>
-                  </div>
-                </div>
+                )}
                 <button
                   type="button"
                   onClick={onBack}
