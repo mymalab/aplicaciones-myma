@@ -56,6 +56,36 @@ const normalizeVideoUrl = (rawUrl: string): string => {
   return trimmed;
 };
 
+const decodeBasicHtmlEntities = (value: string): string =>
+  value
+    .replace(/&amp;/gi, '&')
+    .replace(/&#38;/g, '&');
+
+const getEmbedUrlFromIframeField = (row: Record<string, any>): string | null => {
+  const iframeValue = getStringValue(row, ['iframe', 'iframe_html', 'embed_iframe', 'embed_html']);
+  if (!iframeValue) {
+    return null;
+  }
+
+  const decoded = decodeBasicHtmlEntities(iframeValue.trim());
+  if (!decoded) {
+    return null;
+  }
+
+  if (/^(https?:)?\/\//i.test(decoded) || decoded.startsWith('www.')) {
+    const normalizedDirectUrl = normalizeVideoUrl(decoded);
+    return normalizedDirectUrl || null;
+  }
+
+  const srcMatch = decoded.match(/src\s*=\s*["']([^"']+)["']/i);
+  if (!srcMatch?.[1]) {
+    return null;
+  }
+
+  const normalizedSrc = normalizeVideoUrl(srcMatch[1]);
+  return normalizedSrc || null;
+};
+
 const parseNeedsPermissionsValue = (value: unknown): boolean => {
   if (typeof value === 'boolean') {
     return value;
@@ -122,7 +152,7 @@ const getYoutubeVideoId = (rawUrl: string): string | null => {
       return pathId || null;
     }
 
-    if (hostname.includes('youtube.com')) {
+    if (hostname.includes('youtube.com') || hostname.includes('youtube-nocookie.com')) {
       if (url.pathname.startsWith('/watch')) {
         return url.searchParams.get('v');
       }
@@ -167,7 +197,11 @@ const getVimeoVideoId = (rawUrl: string): string | null => {
 const detectProvider = (rawUrl: string): TutorialVideoProvider => {
   const lower = rawUrl.toLowerCase();
 
-  if (lower.includes('youtube.com') || lower.includes('youtu.be')) {
+  if (
+    lower.includes('youtube.com') ||
+    lower.includes('youtu.be') ||
+    lower.includes('youtube-nocookie.com')
+  ) {
     return 'youtube';
   }
 
@@ -247,13 +281,15 @@ const mapRowToTutorial = (row: Record<string, any>): TutorialVideo | null => {
     'video',
     'archivo_url',
   ]);
+  const iframeEmbedUrl = getEmbedUrlFromIframeField(row);
+  const normalizedUrl = normalizeVideoUrl(url);
+  const playbackUrl = normalizedUrl || iframeEmbedUrl || '';
 
-  if (!modulo || !titulo || !url) {
+  if (!modulo || !titulo || !playbackUrl) {
     return null;
   }
 
-  const normalizedUrl = normalizeVideoUrl(url);
-  const provider = detectProvider(normalizedUrl);
+  const provider = detectProvider(playbackUrl);
   const necesitaPermisos = parseNeedsPermissionsValue(
     row.necesita_permisos ?? row.requires_permissions ?? row.requiere_permiso
   );
@@ -265,8 +301,8 @@ const mapRowToTutorial = (row: Record<string, any>): TutorialVideo | null => {
     modulo,
     moduleKey: normalizeCompactText(modulo),
     necesitaPermisos,
-    url: normalizedUrl,
-    embedUrl: resolveEmbedUrl(normalizedUrl, provider),
+    url: playbackUrl,
+    embedUrl: iframeEmbedUrl ?? resolveEmbedUrl(playbackUrl, provider),
     thumbnailUrl: getStringValue(row, ['miniatura_url', 'thumbnail_url', 'imagen_url', 'poster_url']) || null,
     provider,
     orden: getNumberValue(row, ['orden', 'order', 'prioridad', 'position'], Number.MAX_SAFE_INTEGER),
