@@ -1,7 +1,23 @@
 import React, { useState, useEffect } from 'react';
-import { ProjectGalleryItem, RequestItem, RequestStatus } from '../types';
+import {
+  ProjectGalleryItem,
+  RequestItem,
+  RequestStatus,
+  SOLICITUD_ACREDITACION_STATUS,
+} from '../types';
 import type { AcreditacionAccessLevel } from '../utils/navigationPolicy';
-import { updateRequerimientoEstado, fetchProyectoRequerimientoObservaciones, fetchProyectoRequerimientos, fetchPersonaRequerimientosByNombre, sendWebhookViaEdgeFunction, fetchSolicitudAcreditacionByCodigo, enviarIdProyectoN8n } from '../services/acreditacionService';
+import {
+  advanceSolicitudAcreditacionStatus,
+  canonicalizeSolicitudStatus,
+  fetchPersonaRequerimientosByNombre,
+  fetchProyectoRequerimientoObservaciones,
+  fetchProyectoRequerimientos,
+  fetchSolicitudAcreditacionByCodigo,
+  getNextManualSolicitudStatus,
+  sendWebhookViaEdgeFunction,
+  updateRequerimientoEstado,
+  enviarIdProyectoN8n,
+} from '../services/acreditacionService';
 import { supabase } from '@shared/api-client/supabase';
 
 interface ProjectRequirement {
@@ -39,21 +55,22 @@ const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
   accessLevel = 'none',
 }) => {
   // Estado local para el status del proyecto (para actualizar sin recargar)
-  const [projectStatus, setProjectStatus] = useState<string>(project.status);
+  const [projectStatus, setProjectStatus] = useState<string>(
+    String(canonicalizeSolicitudStatus(project.status))
+  );
+  const [advancingProjectStatus, setAdvancingProjectStatus] = useState(false);
 
   const isReadOnlyCollaborator = accessLevel === 'editor' || accessLevel === 'viewer';
-  const isMymaEmpresaAcreditacion = (empresaAcreditacion?: string) =>
-    (empresaAcreditacion || '').trim().toLowerCase() === 'myma';
 
-  const canUploadRequirementDocument = (requerimiento: ProjectRequirement) => {
+  const canUploadRequirementDocument = (_requerimiento: ProjectRequirement) => {
     if (accessLevel === 'admin' || accessLevel === 'accreditor') return true;
-    if (accessLevel === 'editor') return !isMymaEmpresaAcreditacion(requerimiento.empresa_acreditacion);
+    if (accessLevel === 'editor') return false;
     return false;
   };
 
-  const canViewRequirementDocument = (requerimiento: ProjectRequirement) => {
-    if (accessLevel !== 'editor') return true;
-    return !isMymaEmpresaAcreditacion(requerimiento.empresa_acreditacion);
+  const canViewRequirementDocument = (_requerimiento: ProjectRequirement) => {
+    if (accessLevel === 'editor') return false;
+    return true;
   };
 
   const canDeleteDocuments = !isReadOnlyCollaborator;
@@ -63,6 +80,7 @@ const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
   const canPreviewDocument = true;
   const canOpenDriveDocument = true;
   const canSendProjectDetail = accessLevel !== 'none';
+  const canManuallyAdvanceProjectStatus = accessLevel === 'admin' || accessLevel === 'accreditor';
   
   // Estado para controlar qué dropdown de columna está abierto
   const [openFilterDropdown, setOpenFilterDropdown] = useState<string | null>(null);
@@ -146,7 +164,7 @@ const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
 
   // Sincronizar el estado local del proyecto cuando cambie el prop
   useEffect(() => {
-    setProjectStatus(project.status);
+    setProjectStatus(String(canonicalizeSolicitudStatus(project.status)));
   }, [project.status]);
 
   const areRequirementsEquivalent = (
@@ -405,6 +423,39 @@ const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
     setOpenFilterDropdown(null);
   };
 
+  const nextManualProjectStatus = getNextManualSolicitudStatus(projectStatus);
+  const manualProjectStatusButtonLabel =
+    nextManualProjectStatus === SOLICITUD_ACREDITACION_STATUS.EN_REVISION_CLIENTE
+      ? 'Pasar a revision cliente'
+      : nextManualProjectStatus === SOLICITUD_ACREDITACION_STATUS.ACREDITACION_FINALIZADA
+        ? 'Finalizar acreditacion'
+        : null;
+
+  const handleAdvanceProjectStatus = async () => {
+    if (!canManuallyAdvanceProjectStatus) return;
+    if (!nextManualProjectStatus) return;
+    if (advancingProjectStatus) return;
+
+    try {
+      setAdvancingProjectStatus(true);
+      const result = await advanceSolicitudAcreditacionStatus(project.id);
+      setProjectStatus(String(result.nextStatus));
+
+      if (onUpdate) {
+        onUpdate();
+      }
+    } catch (err) {
+      console.error('Error avanzando estado del proyecto:', err);
+      alert(
+        err instanceof Error
+          ? err.message
+          : 'No se pudo avanzar el estado de la solicitud.'
+      );
+    } finally {
+      setAdvancingProjectStatus(false);
+    }
+  };
+
 
   const handleToggleRealizado = async (e: React.MouseEvent, id: number) => {
     // Detener la propagación para evitar que se active el click del contenedor
@@ -448,19 +499,19 @@ const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
       // El popup manejará la redirección después de 2 segundos
       if (wasLastOne && result.allCompleted) {
         // Actualizar estado local del proyecto
-        setProjectStatus('Finalizado');
+        setProjectStatus(SOLICITUD_ACREDITACION_STATUS.DOCUMENTACION_SUBIDA);
         // Mostrar modal de éxito (se cerrará automáticamente después de 2 segundos y luego se recargará)
         setProyectoCompletadoModalOpen(true);
         // NO ejecutar onUpdate aquí, el popup lo manejará después de 2 segundos
       }
-      // Si el estado del proyecto cambió a "En proceso" (desde Finalizado), solo actualizar el estado local sin redirigir
-      else if (result.proyectoEstadoCambio === 'En proceso') {
-        setProjectStatus('En proceso');
+      // Si el estado del proyecto cambió a "En proceso" por requerimientos pendientes, solo actualizar estado local
+      else if (result.proyectoEstadoCambio === SOLICITUD_ACREDITACION_STATUS.EN_PROCESO) {
+        setProjectStatus(SOLICITUD_ACREDITACION_STATUS.EN_PROCESO);
         // NO recargar, solo actualizar el badge de estado
       }
-      // Si el estado cambió a "Finalizado" (pero no fue el último requerimiento), actualizar estado local
-      else if (result.proyectoEstadoCambio === 'Finalizado') {
-        setProjectStatus('Finalizado');
+      // Si el estado cambió a "Documentación subida", actualizar estado local
+      else if (result.proyectoEstadoCambio === SOLICITUD_ACREDITACION_STATUS.DOCUMENTACION_SUBIDA) {
+        setProjectStatus(SOLICITUD_ACREDITACION_STATUS.DOCUMENTACION_SUBIDA);
       }
     } catch (error) {
       console.error('❌ Error actualizando requerimiento:', error);
@@ -1025,15 +1076,15 @@ const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
           // Si se completó el último requerimiento, mostrar popup
           if (wasLastOne && resultEstado.allCompleted) {
             console.log('🎉 Se completó el último requerimiento, mostrando popup...');
-            setProjectStatus('Finalizado');
+            setProjectStatus(SOLICITUD_ACREDITACION_STATUS.DOCUMENTACION_SUBIDA);
             setProyectoCompletadoModalOpen(true);
           }
           // Si el estado del proyecto cambió, actualizar el estado local
-          else if (resultEstado.proyectoEstadoCambio === 'En proceso') {
-            setProjectStatus('En proceso');
+          else if (resultEstado.proyectoEstadoCambio === SOLICITUD_ACREDITACION_STATUS.EN_PROCESO) {
+            setProjectStatus(SOLICITUD_ACREDITACION_STATUS.EN_PROCESO);
           }
-          else if (resultEstado.proyectoEstadoCambio === 'Finalizado') {
-            setProjectStatus('Finalizado');
+          else if (resultEstado.proyectoEstadoCambio === SOLICITUD_ACREDITACION_STATUS.DOCUMENTACION_SUBIDA) {
+            setProjectStatus(SOLICITUD_ACREDITACION_STATUS.DOCUMENTACION_SUBIDA);
           }
         } catch (errorEstado) {
           console.error('❌ Error al marcar requerimiento como completado:', errorEstado);
@@ -1229,15 +1280,15 @@ const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
           // Si se completó el último requerimiento, mostrar popup
           if (wasLastOne && resultEstado.allCompleted) {
             console.log('🎉 Se completó el último requerimiento, mostrando popup...');
-            setProjectStatus('Finalizado');
+            setProjectStatus(SOLICITUD_ACREDITACION_STATUS.DOCUMENTACION_SUBIDA);
             setProyectoCompletadoModalOpen(true);
           }
           // Si el estado del proyecto cambió, actualizar el estado local
-          else if (resultEstado.proyectoEstadoCambio === 'En proceso') {
-            setProjectStatus('En proceso');
+          else if (resultEstado.proyectoEstadoCambio === SOLICITUD_ACREDITACION_STATUS.EN_PROCESO) {
+            setProjectStatus(SOLICITUD_ACREDITACION_STATUS.EN_PROCESO);
           }
-          else if (resultEstado.proyectoEstadoCambio === 'Finalizado') {
-            setProjectStatus('Finalizado');
+          else if (resultEstado.proyectoEstadoCambio === SOLICITUD_ACREDITACION_STATUS.DOCUMENTACION_SUBIDA) {
+            setProjectStatus(SOLICITUD_ACREDITACION_STATUS.DOCUMENTACION_SUBIDA);
           }
         } catch (errorEstado) {
           console.error('❌ Error al marcar requerimiento como completado:', errorEstado);
@@ -1350,16 +1401,45 @@ const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
               </div>
               
               {/* Estado */}
-              <span className={`px-4 py-2 rounded-lg text-xs font-bold border-2 ${
-                projectStatus.toLowerCase().includes('por asignar requerimientos') ? 'bg-amber-100 text-amber-700 border-amber-300' :
-                projectStatus.toLowerCase().includes('proceso') ? 'bg-blue-100 text-blue-700 border-blue-300' :
-                projectStatus.toLowerCase().includes('finalizado') ? 'bg-green-100 text-green-700 border-green-300' :
-                projectStatus.toLowerCase().includes('cancelado') ? 'bg-red-100 text-red-700 border-red-300' :
-                projectStatus.toLowerCase().includes('atrasado') ? 'bg-orange-100 text-orange-700 border-orange-300' :
-                'bg-gray-100 text-gray-700 border-gray-300'
-              }`}>
-                {projectStatus}
-              </span>
+              {(() => {
+                const canonicalStatus = String(canonicalizeSolicitudStatus(projectStatus));
+                const statusClass =
+                  canonicalStatus === SOLICITUD_ACREDITACION_STATUS.POR_ASIGNAR_REQUERIMIENTOS
+                    ? 'bg-amber-100 text-amber-700 border-amber-300'
+                    : canonicalStatus === SOLICITUD_ACREDITACION_STATUS.POR_ASIGNAR_RESPONSABLES
+                      ? 'bg-yellow-100 text-yellow-700 border-yellow-300'
+                      : canonicalStatus === SOLICITUD_ACREDITACION_STATUS.EN_PROCESO
+                        ? 'bg-blue-100 text-blue-700 border-blue-300'
+                        : canonicalStatus === SOLICITUD_ACREDITACION_STATUS.DOCUMENTACION_SUBIDA
+                          ? 'bg-emerald-100 text-emerald-700 border-emerald-300'
+                          : canonicalStatus === SOLICITUD_ACREDITACION_STATUS.EN_REVISION_CLIENTE
+                            ? 'bg-cyan-100 text-cyan-700 border-cyan-300'
+                            : canonicalStatus === SOLICITUD_ACREDITACION_STATUS.ACREDITACION_FINALIZADA
+                              ? 'bg-green-100 text-green-700 border-green-300'
+                              : canonicalStatus === SOLICITUD_ACREDITACION_STATUS.CANCELADO
+                                ? 'bg-red-100 text-red-700 border-red-300'
+                                : canonicalStatus === SOLICITUD_ACREDITACION_STATUS.ATRASADO
+                                  ? 'bg-orange-100 text-orange-700 border-orange-300'
+                                  : 'bg-gray-100 text-gray-700 border-gray-300';
+
+                return (
+                  <div className="flex flex-col items-end gap-2">
+                    <span className={`px-4 py-2 rounded-lg text-xs font-bold border-2 ${statusClass}`}>
+                      {canonicalStatus}
+                    </span>
+                    {canManuallyAdvanceProjectStatus && manualProjectStatusButtonLabel && (
+                      <button
+                        type="button"
+                        onClick={handleAdvanceProjectStatus}
+                        disabled={advancingProjectStatus}
+                        className="inline-flex h-9 w-56 items-center justify-center rounded-md border border-primary/30 bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary transition-colors hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {advancingProjectStatus ? 'Actualizando...' : manualProjectStatusButtonLabel}
+                      </button>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </div>
@@ -2471,7 +2551,7 @@ const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
               <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mb-4 shadow-lg">
                 <span className="material-symbols-outlined text-green-600 text-5xl">check_circle</span>
               </div>
-              <h2 className="text-2xl font-bold text-white text-center">¡Proyecto Completado!</h2>
+              <h2 className="text-2xl font-bold text-white text-center">Documentación subida</h2>
             </div>
 
             {/* Content */}
@@ -2488,7 +2568,7 @@ const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
                 </p>
                 <div className="mt-4 p-4 bg-green-50 rounded-lg border border-green-200">
                   <p className="text-sm text-green-800 font-medium">
-                    El proyecto ha sido marcado como <span className="font-bold">"Finalizado"</span>
+                    El proyecto ha sido marcado como <span className="font-bold">"Documentación subida"</span>
                   </p>
                 </div>
               </div>

@@ -1,4 +1,5 @@
 // Utilidades para gestionar tareas de proyectos
+import { SOLICITUD_ACREDITACION_STATUS } from '../types';
 
 export interface ProjectTask {
   id: number;
@@ -40,8 +41,31 @@ export const generateProjectTasks = (
   let taskId = projectId * 100; // Base ID para evitar conflictos
   let taskIndex = 0;
 
-  const statusLower = projectStatus.toLowerCase();
-  const isFinished = statusLower.includes('finalizado') || statusLower.includes('finalizada');
+  const statusLower = (projectStatus || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+  const isFinished =
+    statusLower.includes('finalizado') ||
+    statusLower.includes('finalizada') ||
+    statusLower.includes(
+      SOLICITUD_ACREDITACION_STATUS.DOCUMENTACION_SUBIDA
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+    ) ||
+    statusLower.includes(
+      SOLICITUD_ACREDITACION_STATUS.EN_REVISION_CLIENTE
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+    ) ||
+    statusLower.includes(
+      SOLICITUD_ACREDITACION_STATUS.ACREDITACION_FINALIZADA
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+    );
   const isInProgress = statusLower.includes('proceso');
 
   const buildTaskState = (index: number): { realizado: boolean; fechaFinalizada?: string } => {

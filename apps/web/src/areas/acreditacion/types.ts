@@ -213,6 +213,7 @@ export interface RequestFormData {
   requesterName: string;
   kickoffDate: string;
   projectCode: string;
+  esContratoMarco: string;
   requirement: string;
   clientName: string;
   clientContactName: string;
@@ -274,6 +275,20 @@ export interface FieldRequestFormSnapshot {
   missingFields?: string[];
 }
 
+export const SOLICITUD_ACREDITACION_STATUS = {
+  POR_ASIGNAR_REQUERIMIENTOS: 'Por asignar requerimientos',
+  POR_ASIGNAR_RESPONSABLES: 'Por asignar responsables',
+  EN_PROCESO: 'En proceso',
+  DOCUMENTACION_SUBIDA: 'Documentación subida',
+  EN_REVISION_CLIENTE: 'En revisión por Cliente',
+  ACREDITACION_FINALIZADA: 'Acreditación finalizada',
+  CANCELADO: 'Cancelado',
+  ATRASADO: 'Atrasado',
+} as const;
+
+export type SolicitudAcreditacionStatus =
+  (typeof SOLICITUD_ACREDITACION_STATUS)[keyof typeof SOLICITUD_ACREDITACION_STATUS];
+
 // Tipo para la tabla solicitud_acreditacion
 export interface SolicitudAcreditacion {
   id: number;
@@ -313,7 +328,7 @@ export interface SolicitudAcreditacion {
   email_usuario?: string | null;
   solicitud_prueba?: boolean;
   estado?: string;
-  estado_solicitud_acreditacion?: string; // Estado específico de la solicitud
+  estado_solicitud_acreditacion?: SolicitudAcreditacionStatus | string; // Estado específico de la solicitud
   // Responsables del proyecto
   empresa_id?: string; // ID de la Empresa Contratista
   empresa_nombre?: string; // Nombre de la Empresa Contratista
@@ -327,6 +342,7 @@ export interface SolicitudAcreditacion {
   legal_nombre?: string; // Nombre del Responsable Legal
   drive_folder_id?: string; // ID de la carpeta de Google Drive del proyecto
   drive_folder_url?: string; // URL de la carpeta de Google Drive del proyecto
+  fecha_finalizacion?: string | null;
   created_at: string;
   updated_at?: string;
 }
@@ -343,9 +359,10 @@ export interface ProjectGalleryItem {
   fechaInicioTerreno?: string;
   totalWorkers: number;
   totalVehicles: number;
-  status: string;
+  status: SolicitudAcreditacionStatus | string;
   workers: Worker[];
   createdAt: string;
+  fechaFinalizacion?: string | null;
   // Progreso de tareas
   completedTasks?: number;
   totalTasks?: number;

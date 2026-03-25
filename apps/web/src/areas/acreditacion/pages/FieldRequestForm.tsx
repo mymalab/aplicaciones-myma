@@ -1,6 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { WorkerList } from './WorkerList';
-import { Worker, WorkerType, RequestFormData, MOCK_COMPANIES, Persona, Cliente, FieldRequestFormSnapshot } from '../types';
+import {
+  Worker,
+  WorkerType,
+  RequestFormData,
+  MOCK_COMPANIES,
+  Persona,
+  Cliente,
+  FieldRequestFormSnapshot,
+  SOLICITUD_ACREDITACION_STATUS,
+} from '../types';
 import {
   createSolicitudAcreditacion,
   createProyectoTrabajadores,
@@ -45,7 +54,7 @@ interface FieldRequestFormProps {
   };
 }
 
-const DEBUG_OWNER_EMAIL = 'cmansilla@myma.cl';
+const DEBUG_OWNER_EMAILS = new Set(['cmansilla@myma.cl', 'lab@myma.cl']);
 
 const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
   onBack,
@@ -72,6 +81,7 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
     requesterName: '',
     kickoffDate: '',
     projectCode: PROJECT_CODE_PREFIX,
+    esContratoMarco: 'no',
     requirement: '',
     clientName: '',
     clientContactName: '',
@@ -152,7 +162,7 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
         if (!isMounted) return;
 
         const email = (user?.email || '').trim().toLowerCase();
-        const hasDebugAccess = !error && email === DEBUG_OWNER_EMAIL;
+        const hasDebugAccess = !error && DEBUG_OWNER_EMAILS.has(email);
 
         setCanUseDebugControls(hasDebugAccess);
         setSolicitudPrueba(hasDebugAccess);
@@ -181,7 +191,12 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
       return;
     }
 
-    setFormData(initialSnapshot.formData);
+    setFormData({
+      ...initialSnapshot.formData,
+      esContratoMarco:
+        initialSnapshot.formData.esContratoMarco ||
+        (initialSnapshot.formData.numeroContrato ? 'yes' : 'no'),
+    });
     setWorkers(initialSnapshot.workers || []);
     setWorkersContratista(initialSnapshot.workersContratista || []);
     setTargetWorkerCountMyma(initialSnapshot.targetWorkerCountMyma || 0);
@@ -226,6 +241,7 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
       requesterName: '',
       kickoffDate: '',
       projectCode: PROJECT_CODE_PREFIX,
+      esContratoMarco: 'no',
       requirement: '',
       clientName: '',
       clientContactName: '',
@@ -633,7 +649,10 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
     const { name, value } = e.target;
 
     if (name === 'projectCode') {
-      setFormData(prev => ({ ...prev, projectCode: formatProjectCodeInput(value) }));
+      setFormData(prev => ({
+        ...prev,
+        projectCode: prev.esContratoMarco === 'yes' ? value : formatProjectCodeInput(value),
+      }));
       return;
     }
 
@@ -785,7 +804,12 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
       }
 
       if (!effectiveOmitirCamposObligatorios) {
-      if (!PROJECT_CODE_REGEX.test(formData.projectCode)) {
+      if (formData.esContratoMarco === 'yes' && !formData.projectCode.trim()) {
+        alert('Debes ingresar el N° de contrato para Contrato Marco.');
+        return;
+      }
+
+      if (formData.esContratoMarco !== 'yes' && !PROJECT_CODE_REGEX.test(formData.projectCode)) {
         alert('El codigo de proyecto debe tener formato MY-001-2026.');
         return;
       }
@@ -892,6 +916,7 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
       }
 
       const requiereAcreditarEmpresa = formData.companyAccreditationRequired === 'yes';
+      const esContratoMarco = formData.esContratoMarco === 'yes';
       const requiereAcreditarTrabajadoresMyma = formData.requiereAcreditarTrabajadoresMyma === 'yes';
       const requiereAcreditarContratista = formData.requiereAcreditarContratista === 'yes';
       const requiereAcreditarTrabajadoresContratista = formData.requiereAcreditarTrabajadoresContratista === 'yes';
@@ -920,7 +945,8 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
         admin_contrato_myma: formData.contractAdmin || null,
         email_usuario: emailUsuario,
         solicitud_prueba: effectiveSolicitudPrueba,
-        estado_solicitud_acreditacion: 'Por asignar requerimientos', // Estado inicial del proyecto
+        estado_solicitud_acreditacion:
+          SOLICITUD_ACREDITACION_STATUS.POR_ASIGNAR_REQUERIMIENTOS, // Estado inicial del proyecto
       };
 
       // Agregar campos opcionales solo si tienen valor - Nombres corregidos
@@ -941,11 +967,14 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
       // Información del Contrato (solo si se requiere acreditar empresa)
       if (requiereAcreditarEmpresa) {
         if (formData.nombreContrato) solicitudData.nombre_contrato = formData.nombreContrato;
-        if (formData.numeroContrato) solicitudData.numero_contrato = formData.numeroContrato;
         if (formData.administradorContrato) solicitudData.administrador_contrato = formData.administradorContrato;
         
         // Horarios de trabajo ya no se guardan aquí, se guardarán en fct_acreditacion_solicitud_horario_manual después de crear la solicitud
         // Vehículos ya no se guardan aquí, se guardarán en fct_acreditacion_solicitud_conductor_manual después de crear la solicitud
+      }
+
+      if ((requiereAcreditarEmpresa || esContratoMarco) && formData.numeroContrato.trim()) {
+        solicitudData.numero_contrato = formData.numeroContrato.trim();
       }
 
       // Información de Contratista
@@ -1284,6 +1313,7 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
       requesterName: personaAleatoria?.nombre_completo || randomItem(nombres),
       kickoffDate: randomDate(randomInt(1, 7)),
       projectCode: `MY-${String(randomInt(1, 999)).padStart(3, '0')}-${new Date().getFullYear()}`,
+      esContratoMarco: 'no',
       requirement: randomItem(requisitos),
       clientName: empresaCliente,
       clientContactName: nombreCliente,
@@ -1298,7 +1328,7 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
       nombreContrato: `Contrato ${randomItem(['Servicios', 'Obra', 'Suministro'])} ${new Date().getFullYear()}`,
       numeroContrato: `CON-${new Date().getFullYear()}-${String(randomInt(100, 999)).padStart(3, '0')}`,
       administradorContrato: randomItem(nombres),
-      jornadaTrabajo: `${randomInt(8, 12)} horas`,
+      jornadaTrabajo: randomItem(['4x3', '5x2', '6x1', 'Art. 22']),
       horarioTrabajo: randomItem(horarios),
       cantidadVehiculos: String(randomInt(1, 5)),
       placaPatente: '',
@@ -1467,6 +1497,10 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
     formData.requiereAcreditarTrabajadoresContratista !== 'yes' ||
     formData.registroSstTerreo === 'yes' ||
     formData.registroSstTerreo === 'no';
+  const hasValidProjectCode =
+    formData.esContratoMarco === 'yes'
+      ? formData.projectCode.trim() !== ''
+      : PROJECT_CODE_REGEX.test(formData.projectCode);
   const hasAtLeastOneMymaWorker = workers.length > 0;
   const hasAnyWorkerAdded = workers.length > 0 || workersContratista.length > 0;
   const hasCondicionLaboralWhenWorkers = !hasAnyWorkerAdded || formData.jornadaTrabajo.trim() !== '';
@@ -1481,7 +1515,7 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
     );
 
   const areAllRequiredFieldsCompleted =
-    PROJECT_CODE_REGEX.test(formData.projectCode) &&
+    hasValidProjectCode &&
     formData.requirement.trim() !== '' &&
     formData.requestDate.trim() !== '' &&
     formData.requesterName.trim() !== '' &&
@@ -1616,21 +1650,65 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
             </div>
             <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               <label className="flex flex-col gap-2">
-                <span className="text-[#111318] text-sm font-medium">
-                  Código de Proyecto <span className="text-red-500">*</span>
-                </span>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-[#111318] text-sm font-medium">
+                    Código de Proyecto <span className="text-red-500">*</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setFormData(prev => {
+                        const isContratoMarcoActivo = prev.esContratoMarco === 'yes';
+
+                        if (isContratoMarcoActivo) {
+                          return {
+                            ...prev,
+                            esContratoMarco: 'no',
+                            projectCode: formatProjectCodeInput(prev.projectCode || ''),
+                          };
+                        }
+
+                        return {
+                          ...prev,
+                          esContratoMarco: 'yes',
+                          projectCode: prev.projectCode === PROJECT_CODE_PREFIX ? '' : prev.projectCode,
+                        };
+                      });
+                    }}
+                    aria-pressed={formData.esContratoMarco === 'yes'}
+                    className="inline-flex items-center gap-2 text-xs text-[#616f89] whitespace-nowrap"
+                  >
+                    <span>Contrato Marco?</span>
+                    <span
+                      className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${
+                        formData.esContratoMarco === 'yes' ? 'bg-primary' : 'bg-gray-300'
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-3 w-3 rounded-full bg-white transition-transform ${
+                          formData.esContratoMarco === 'yes' ? 'translate-x-3.5' : 'translate-x-0.5'
+                        }`}
+                      />
+                    </span>
+                  </button>
+                </div>
                 <input 
                   type="text" 
                   name="projectCode"
                   value={formData.projectCode}
                   onChange={handleInputChange}
                   required
-                  placeholder="Ej: MY-001-2026"
-                  maxLength={11}
-                  pattern="MY-[0-9]{3}-[0-9]{4}"
+                  placeholder={formData.esContratoMarco === 'yes' ? 'Ingresar N° Contrato' : 'Ej: MY-001-2026'}
+                  maxLength={formData.esContratoMarco === 'yes' ? 120 : 11}
+                  pattern={formData.esContratoMarco === 'yes' ? undefined : 'MY-[0-9]{3}-[0-9]{4}'}
                   className="form-input w-full rounded-lg border border-[#dbdfe6] bg-white px-3 py-2.5 text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none" 
                 />
-                <span className="text-xs text-[#616f89]">Ejemplo: MY-001-2026</span>
+                <span className="text-xs text-[#616f89]">
+                  {formData.esContratoMarco === 'yes'
+                    ? 'Campo libre para contrato marco.'
+                    : 'Ejemplo: MY-001-2026'}
+                </span>
               </label>
               <label className="flex flex-col gap-2">
                 <span className="text-[#111318] text-sm font-medium">
@@ -2699,4 +2777,8 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
 };
 
 export default FieldRequestForm;
+
+
+
+
 

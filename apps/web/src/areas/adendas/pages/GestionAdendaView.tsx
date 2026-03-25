@@ -2,7 +2,6 @@
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   fetchPreguntasByCodigoMyma,
-  getAdjuntosDescripcion,
   normalizeComplejidadPregunta,
   normalizeEstadoPregunta,
 } from '../services/preguntasService';
@@ -513,19 +512,10 @@ const GestionAdendaView: React.FC = () => {
                     Temas secundarios
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Adjuntos
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Encargado
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Especialidad
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Estrategia
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Respuesta IA
                   </th>
                 </tr>
               </thead>
@@ -535,9 +525,6 @@ const GestionAdendaView: React.FC = () => {
                   const complejidadUi = normalizeComplejidadPregunta(pregunta.complejidad);
                   const especialidadUi = pregunta.especialidad_nombre || 'Sin especialidad';
                   const encargadoUi = pregunta.encargado_nombre || 'Sin encargado';
-                  const estrategiaUi = pregunta.estrategia || 'Sin estrategia registrada.';
-                  const respuestaIaUi = pregunta.respuesta_ia || 'Sin respuesta IA registrada.';
-
                   return (
                     <tr
                       key={pregunta.id}
@@ -580,27 +567,6 @@ const GestionAdendaView: React.FC = () => {
                         <div className="text-xs text-gray-700">{pregunta.temas_secundarios_texto}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex flex-col gap-1">
-                          <span className="text-xs text-gray-700">
-                            {getAdjuntosDescripcion(pregunta.adjuntos_resumen)}
-                          </span>
-                          {pregunta.adjuntos_resumen.total > 0 && (
-                            <div className="flex gap-1">
-                              {pregunta.adjuntos_resumen.tabla > 0 && (
-                                <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-800">
-                                  Tabla
-                                </span>
-                              )}
-                              {pregunta.adjuntos_resumen.figura > 0 && (
-                                <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-medium bg-green-100 text-green-800">
-                                  Figura
-                                </span>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm text-[#111318]">{encargadoUi}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
@@ -612,19 +578,13 @@ const GestionAdendaView: React.FC = () => {
                           {especialidadUi}
                         </span>
                       </td>
-                      <td className="px-6 py-4 max-w-md">
-                        <div className="text-xs text-gray-700 line-clamp-3">{estrategiaUi}</div>
-                      </td>
-                      <td className="px-6 py-4 max-w-md">
-                        <div className="text-xs text-gray-700 line-clamp-3">{respuestaIaUi}</div>
-                      </td>
                     </tr>
                   );
                 })}
 
                 {paginatedPreguntas.length === 0 && (
                   <tr>
-                    <td className="px-6 py-8 text-sm text-gray-500 text-center" colSpan={12}>
+                    <td className="px-6 py-8 text-sm text-gray-500 text-center" colSpan={9}>
                       No hay preguntas para los filtros seleccionados.
                     </td>
                   </tr>

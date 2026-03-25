@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ProjectGalleryItem } from '../types';
+import { ProjectGalleryItem, SOLICITUD_ACREDITACION_STATUS } from '../types';
 import {
   fetchClientes,
   fetchEmpresaRequerimientos,
@@ -474,7 +474,8 @@ const SelectCompanyAndRequirementsView: React.FC<SelectCompanyAndRequirementsVie
       await updateSolicitudAcreditacion(project.id, {
         empresa_id: selectedEmpresaId,
         empresa_nombre: selectedEmpresaNombre,
-        estado_solicitud_acreditacion: 'Por asignar responsables',
+        estado_solicitud_acreditacion:
+          SOLICITUD_ACREDITACION_STATUS.POR_ASIGNAR_RESPONSABLES,
       });
 
       // Guardar los requerimientos seleccionados en brg_acreditacion_solicitud_requerimiento

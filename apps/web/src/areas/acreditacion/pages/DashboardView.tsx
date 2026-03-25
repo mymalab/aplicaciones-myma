@@ -391,7 +391,7 @@ const DashboardView: React.FC<DashboardViewProps> = () => {
     {
       title: 'Total Solicitudes',
       value: isLoadingStats ? '...' : totalSolicitudes.toString(),
-      change: `${proyectosFinalizados} finalizadas`,
+      change: `${proyectosFinalizados} acreditaciones finalizadas`,
       positive: true,
       icon: 'description',
       iconBg: 'bg-[hsl(160,72%,42%)]',
@@ -407,7 +407,7 @@ const DashboardView: React.FC<DashboardViewProps> = () => {
     {
       title: 'Solicitudes Pendientes',
       value: isLoadingStats ? '...' : solicitudesPendientes.toString(),
-      change: 'No finalizadas',
+      change: 'No finalizadas en acreditacion',
       positive: false,
       icon: 'pending',
       iconBg: 'bg-amber-500',
@@ -423,7 +423,10 @@ const DashboardView: React.FC<DashboardViewProps> = () => {
     {
       title: 'Tiempo Promedio',
       value: isLoadingStats ? '...' : `${tiempoPromedioDias} días`,
-      change: proyectosFinalizados > 0 ? `${proyectosFinalizados} finalizadas` : 'Sin finalizadas',
+      change:
+        proyectosFinalizados > 0
+          ? `${proyectosFinalizados} acreditaciones finalizadas`
+          : 'Sin acreditaciones finalizadas',
       positive: true,
       icon: 'schedule',
       iconBg: 'bg-blue-500',

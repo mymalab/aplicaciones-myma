@@ -1,7 +1,192 @@
 import { supabase } from '@shared/api-client/supabase';
-import { Persona, Requerimiento, PersonaRequerimientoSST, RequestItem, RequestStatus, SolicitudAcreditacion, ProjectGalleryItem, Cliente, EmpresaRequerimiento, ProyectoRequerimientoAcreditacion, ResponsableRequerimiento, ProyectoTrabajador, FieldRequestFormSnapshot, RequestFormData, Worker, WorkerType } from '../types';
+import {
+  Persona,
+  Requerimiento,
+  PersonaRequerimientoSST,
+  RequestItem,
+  RequestStatus,
+  SolicitudAcreditacion,
+  ProjectGalleryItem,
+  Cliente,
+  EmpresaRequerimiento,
+  ProyectoRequerimientoAcreditacion,
+  ResponsableRequerimiento,
+  ProyectoTrabajador,
+  FieldRequestFormSnapshot,
+  RequestFormData,
+  Worker,
+  WorkerType,
+  SOLICITUD_ACREDITACION_STATUS,
+  SolicitudAcreditacionStatus,
+} from '../types';
 import { generateProjectTasks, calculateCompletedTasks } from '../utils/projectTasks';
 import { ACREDITACION_PROXY_ENDPOINTS } from './acreditacionProxyEndpoints';
+
+const LEGACY_FINALIZADO_ALIASES = new Set(['finalizado', 'finalizada']);
+
+const normalizeStatusText = (status: string | null | undefined): string =>
+  (status || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+
+const isNormalizedLegacyFinalizadoStatus = (normalizedStatus: string): boolean =>
+  LEGACY_FINALIZADO_ALIASES.has(normalizedStatus);
+
+export const canonicalizeSolicitudStatus = (
+  status: string | null | undefined
+): SolicitudAcreditacionStatus | string => {
+  const normalizedStatus = normalizeStatusText(status);
+
+  if (isNormalizedLegacyFinalizadoStatus(normalizedStatus)) {
+    return SOLICITUD_ACREDITACION_STATUS.DOCUMENTACION_SUBIDA;
+  }
+
+  if (normalizedStatus.includes('acreditacion finalizada')) {
+    return SOLICITUD_ACREDITACION_STATUS.ACREDITACION_FINALIZADA;
+  }
+
+  if (normalizedStatus.includes('documentacion subida')) {
+    return SOLICITUD_ACREDITACION_STATUS.DOCUMENTACION_SUBIDA;
+  }
+
+  if (normalizedStatus.includes('revision por cliente')) {
+    return SOLICITUD_ACREDITACION_STATUS.EN_REVISION_CLIENTE;
+  }
+
+  if (normalizedStatus.includes('por asignar requerimientos')) {
+    return SOLICITUD_ACREDITACION_STATUS.POR_ASIGNAR_REQUERIMIENTOS;
+  }
+
+  if (normalizedStatus.includes('por asignar responsables')) {
+    return SOLICITUD_ACREDITACION_STATUS.POR_ASIGNAR_RESPONSABLES;
+  }
+
+  if (normalizedStatus.includes('en proceso')) {
+    return SOLICITUD_ACREDITACION_STATUS.EN_PROCESO;
+  }
+
+  if (normalizedStatus.includes('cancelado') || normalizedStatus.includes('cancelada')) {
+    return SOLICITUD_ACREDITACION_STATUS.CANCELADO;
+  }
+
+  if (normalizedStatus.includes('atrasado') || normalizedStatus.includes('atrasada')) {
+    return SOLICITUD_ACREDITACION_STATUS.ATRASADO;
+  }
+
+  return status || SOLICITUD_ACREDITACION_STATUS.POR_ASIGNAR_REQUERIMIENTOS;
+};
+
+export const isSolicitudStatusAcreditacionFinalizada = (
+  status: string | null | undefined
+): boolean =>
+  canonicalizeSolicitudStatus(status) ===
+  SOLICITUD_ACREDITACION_STATUS.ACREDITACION_FINALIZADA;
+
+export const isSolicitudStatusCancelled = (status: string | null | undefined): boolean =>
+  canonicalizeSolicitudStatus(status) === SOLICITUD_ACREDITACION_STATUS.CANCELADO;
+
+export const isSolicitudStatusOverdue = (status: string | null | undefined): boolean =>
+  canonicalizeSolicitudStatus(status) === SOLICITUD_ACREDITACION_STATUS.ATRASADO;
+
+export const isSolicitudStatusPostDocumentation = (
+  status: string | null | undefined
+): boolean => {
+  const canonicalStatus = canonicalizeSolicitudStatus(status);
+  return (
+    canonicalStatus === SOLICITUD_ACREDITACION_STATUS.DOCUMENTACION_SUBIDA ||
+    canonicalStatus === SOLICITUD_ACREDITACION_STATUS.EN_REVISION_CLIENTE ||
+    canonicalStatus === SOLICITUD_ACREDITACION_STATUS.ACREDITACION_FINALIZADA
+  );
+};
+
+export const canRestrictedCollaboratorOpenSolicitudStatus = (
+  status: string | null | undefined
+): boolean => {
+  const canonicalStatus = canonicalizeSolicitudStatus(status);
+  return (
+    canonicalStatus === SOLICITUD_ACREDITACION_STATUS.EN_PROCESO ||
+    canonicalStatus === SOLICITUD_ACREDITACION_STATUS.DOCUMENTACION_SUBIDA ||
+    canonicalStatus === SOLICITUD_ACREDITACION_STATUS.EN_REVISION_CLIENTE ||
+    canonicalStatus === SOLICITUD_ACREDITACION_STATUS.ACREDITACION_FINALIZADA
+  );
+};
+
+export const getNextManualSolicitudStatus = (
+  status: string | null | undefined
+): SolicitudAcreditacionStatus | null => {
+  const canonicalStatus = canonicalizeSolicitudStatus(status);
+
+  if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.DOCUMENTACION_SUBIDA) {
+    return SOLICITUD_ACREDITACION_STATUS.EN_REVISION_CLIENTE;
+  }
+
+  if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.EN_REVISION_CLIENTE) {
+    return SOLICITUD_ACREDITACION_STATUS.ACREDITACION_FINALIZADA;
+  }
+
+  return null;
+};
+
+export interface AdvanceSolicitudAcreditacionStatusResult {
+  previousStatus: SolicitudAcreditacionStatus | string;
+  nextStatus: SolicitudAcreditacionStatus;
+  solicitudId: number;
+}
+
+export const advanceSolicitudAcreditacionStatus = async (
+  solicitudId: number
+): Promise<AdvanceSolicitudAcreditacionStatusResult> => {
+  const { data: solicitud, error: fetchError } = await supabase
+    .from('fct_acreditacion_solicitud')
+    .select('id, estado_solicitud_acreditacion')
+    .eq('id', solicitudId)
+    .single();
+
+  if (fetchError) {
+    console.error('Error fetching solicitud before status transition:', fetchError);
+    throw fetchError;
+  }
+
+  const previousStatus = canonicalizeSolicitudStatus(
+    solicitud?.estado_solicitud_acreditacion
+  );
+  const nextStatus = getNextManualSolicitudStatus(previousStatus);
+
+  if (!nextStatus) {
+    throw new Error(
+      `No existe una transicion manual disponible desde el estado "${previousStatus}".`
+    );
+  }
+
+  const updatePayload: Partial<SolicitudAcreditacion> = {
+    estado_solicitud_acreditacion: nextStatus,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (nextStatus === SOLICITUD_ACREDITACION_STATUS.ACREDITACION_FINALIZADA) {
+    updatePayload.fecha_finalizacion = new Date().toISOString();
+  } else {
+    updatePayload.fecha_finalizacion = null;
+  }
+
+  const { error: updateError } = await supabase
+    .from('fct_acreditacion_solicitud')
+    .update(updatePayload)
+    .eq('id', solicitudId);
+
+  if (updateError) {
+    console.error('Error advancing solicitud status:', updateError);
+    throw updateError;
+  }
+
+  return {
+    previousStatus,
+    nextStatus,
+    solicitudId,
+  };
+};
 
 // Función para enviar webhook a través de la función edge de Supabase (evita CORS)
 export const sendWebhookViaEdgeFunction = async (payload: any): Promise<any> => {
@@ -693,22 +878,16 @@ const DASHBOARD_RESPONSABLE_ORDER: DashboardResponsableTarea[] = [
 const DASHBOARD_PENDING_TASK_STATUSES = new Set(['pendiente', 'en proceso']);
 
 const normalizeDashboardStatus = (status: string | null | undefined): string =>
-  (status || '').toLowerCase().trim();
+  normalizeStatusText(status);
 
-const isDashboardFinishedStatus = (status: string | null | undefined): boolean => {
-  const normalized = normalizeDashboardStatus(status);
-  return normalized.includes('finalizado') || normalized.includes('finalizada');
-};
+const isDashboardFinishedStatus = (status: string | null | undefined): boolean =>
+  isSolicitudStatusAcreditacionFinalizada(status);
 
-const isDashboardCancelledStatus = (status: string | null | undefined): boolean => {
-  const normalized = normalizeDashboardStatus(status);
-  return normalized.includes('cancelado') || normalized.includes('cancelada');
-};
+const isDashboardCancelledStatus = (status: string | null | undefined): boolean =>
+  isSolicitudStatusCancelled(status);
 
-const isDashboardOverdueStatus = (status: string | null | undefined): boolean => {
-  const normalized = normalizeDashboardStatus(status);
-  return normalized.includes('atrasado') || normalized.includes('atrasada');
-};
+const isDashboardOverdueStatus = (status: string | null | undefined): boolean =>
+  isSolicitudStatusOverdue(status);
 
 const isDashboardPendingTaskStatus = (status: string | null | undefined): boolean =>
   DASHBOARD_PENDING_TASK_STATUSES.has(normalizeDashboardStatus(status));
@@ -731,7 +910,7 @@ export const fetchDashboardKpis = async (): Promise<DashboardKpis> => {
   const [solicitudesResult, requerimientosResult] = await Promise.all([
     supabase
       .from('fct_acreditacion_solicitud')
-      .select('id, estado_solicitud_acreditacion, created_at'),
+      .select('id, estado_solicitud_acreditacion, created_at, fecha_finalizacion'),
     supabase
       .from('brg_acreditacion_solicitud_requerimiento')
       .select('id, estado'),
@@ -777,12 +956,15 @@ export const fetchDashboardKpis = async (): Promise<DashboardKpis> => {
 
   const finishedDurations = solicitudesFinalizadas
     .map((solicitud: any) => {
-      if (!solicitud.created_at) return null;
+      if (!solicitud.created_at || !solicitud.fecha_finalizacion) return null;
 
       const createdAt = new Date(solicitud.created_at);
-      if (Number.isNaN(createdAt.getTime())) return null;
+      const finishedAt = new Date(solicitud.fecha_finalizacion);
+      if (Number.isNaN(createdAt.getTime()) || Number.isNaN(finishedAt.getTime())) return null;
 
-      const diffInDays = Math.floor((Date.now() - createdAt.getTime()) / (1000 * 60 * 60 * 24));
+      const diffInDays = Math.floor(
+        (finishedAt.getTime() - createdAt.getTime()) / (1000 * 60 * 60 * 24)
+      );
       return Math.max(diffInDays, 0);
     })
     .filter((duration: number | null): duration is number => duration !== null);
@@ -815,7 +997,7 @@ export const fetchDashboardTiemposEvolucionAnual = async (
 
   const { data, error } = await supabase
     .from('fct_acreditacion_solicitud')
-    .select('created_at, fecha_finalizacion')
+    .select('created_at, fecha_finalizacion, estado_solicitud_acreditacion')
     .not('fecha_finalizacion', 'is', null)
     .gte('fecha_finalizacion', startOfYear)
     .lt('fecha_finalizacion', startOfNextYear);
@@ -828,6 +1010,7 @@ export const fetchDashboardTiemposEvolucionAnual = async (
   const monthlyDurations: number[][] = Array.from({ length: 12 }, () => []);
 
   (data || []).forEach((solicitud: any) => {
+    if (!isDashboardFinishedStatus(solicitud.estado_solicitud_acreditacion)) return;
     if (!solicitud.created_at || !solicitud.fecha_finalizacion) return;
 
     const createdAt = new Date(solicitud.created_at);
@@ -886,7 +1069,7 @@ export const fetchDashboardActividadEvolucionAnual = async (
       .lt('created_at', startOfNextYear),
     supabase
       .from('fct_acreditacion_solicitud')
-      .select('fecha_finalizacion')
+      .select('fecha_finalizacion, estado_solicitud_acreditacion')
       .not('fecha_finalizacion', 'is', null)
       .gte('fecha_finalizacion', startOfYear)
       .lt('fecha_finalizacion', startOfNextYear),
@@ -939,6 +1122,7 @@ export const fetchDashboardActividadEvolucionAnual = async (
   });
 
   (completedResult.data || []).forEach((row: any) => {
+    if (!isDashboardFinishedStatus(row.estado_solicitud_acreditacion)) return;
     if (!row.fecha_finalizacion) return;
     const finishedAt = new Date(row.fecha_finalizacion);
     if (Number.isNaN(finishedAt.getTime())) return;
@@ -1064,7 +1248,11 @@ export const fetchProjectGalleryItems = async (): Promise<ProjectGalleryItem[]> 
       
       // Si no hay tareas en la BD, usar las generadas por defecto
       if (totalTasks === 0) {
-        const projectStatus = solicitud.estado_solicitud_acreditacion || solicitud.estado || 'Por asignar requerimientos';
+        const projectStatus = canonicalizeSolicitudStatus(
+          solicitud.estado_solicitud_acreditacion ||
+            solicitud.estado ||
+            SOLICITUD_ACREDITACION_STATUS.POR_ASIGNAR_REQUERIMIENTOS
+        );
         projectTasks = generateProjectTasks(
           solicitud.id,
           !!solicitud.jpro_id,
@@ -1080,7 +1268,11 @@ export const fetchProjectGalleryItems = async (): Promise<ProjectGalleryItem[]> 
     } catch (error) {
       console.error('Error cargando requerimientos del proyecto:', error);
       // Si hay error, usar tareas generadas por defecto
-      const projectStatus = solicitud.estado_solicitud_acreditacion || solicitud.estado || 'Por asignar requerimientos';
+      const projectStatus = canonicalizeSolicitudStatus(
+        solicitud.estado_solicitud_acreditacion ||
+          solicitud.estado ||
+          SOLICITUD_ACREDITACION_STATUS.POR_ASIGNAR_REQUERIMIENTOS
+      );
       projectTasks = generateProjectTasks(
         solicitud.id,
         !!solicitud.jpro_id,
@@ -1105,9 +1297,14 @@ export const fetchProjectGalleryItems = async (): Promise<ProjectGalleryItem[]> 
       fechaInicioTerreno: solicitud.fecha_inicio_terreno || undefined,
       totalWorkers: allWorkers.length,
       totalVehicles: totalVehicles,
-      status: solicitud.estado_solicitud_acreditacion || solicitud.estado || 'Por asignar requerimientos',
+      status: canonicalizeSolicitudStatus(
+        solicitud.estado_solicitud_acreditacion ||
+          solicitud.estado ||
+          SOLICITUD_ACREDITACION_STATUS.POR_ASIGNAR_REQUERIMIENTOS
+      ),
       workers: allWorkers,
       createdAt: solicitud.created_at,
+      fechaFinalizacion: solicitud.fecha_finalizacion || null,
       // Progreso de tareas
       completedTasks: completedTasks,
       totalTasks: totalTasks,
@@ -1210,7 +1407,7 @@ export const updateResponsablesSolicitud = async (
     legal_nombre: responsables.legal_nombre || null,
     enc_acreditacion_id: responsables.acreditacion_id || null,
     nombre_enc_acreditacion: responsables.acreditacion_nombre || null,
-    estado_solicitud_acreditacion: 'En proceso',
+    estado_solicitud_acreditacion: SOLICITUD_ACREDITACION_STATUS.EN_PROCESO,
     updated_at: new Date().toISOString() 
   };
 
@@ -2142,42 +2339,49 @@ export const updateRequerimientoEstado = async (
       allCompleted = todosRequerimientos && todosRequerimientos.length > 0 &&
         todosRequerimientos.every(req => req.estado === 'Completado');
 
-      const estadoProyectoActual = proyectoActual?.estado_solicitud_acreditacion?.toLowerCase() || '';
+      const estadoProyectoActual = canonicalizeSolicitudStatus(
+        proyectoActual?.estado_solicitud_acreditacion
+      );
 
-      // Si todos están completados y el proyecto no está en "Finalizado", actualizar a "Finalizado"
-      if (allCompleted && !estadoProyectoActual.includes('finalizado')) {
-        nuevoEstadoProyecto = 'Finalizado';
+      if (
+        allCompleted &&
+        !isSolicitudStatusPostDocumentation(estadoProyectoActual) &&
+        !isSolicitudStatusCancelled(estadoProyectoActual)
+      ) {
+        nuevoEstadoProyecto = SOLICITUD_ACREDITACION_STATUS.DOCUMENTACION_SUBIDA;
         const { error: updateProyectoError } = await supabase
           .from('fct_acreditacion_solicitud')
-          .update({ 
-            estado_solicitud_acreditacion: nuevoEstadoProyecto,
-            fecha_finalizacion: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', requerimiento.id_proyecto);
-
-        if (updateProyectoError) {
-          console.error('❌ Error actualizando estado del proyecto:', updateProyectoError);
-        } else {
-          console.log(`✅ Proyecto ${requerimiento.codigo_proyecto} actualizado a "Finalizado" - Todos los requerimientos están completados`);
-        }
-      }
-      // Si NO todos están completados y el proyecto está en "Finalizado", cambiar a "En proceso"
-      else if (!allCompleted && estadoProyectoActual.includes('finalizado')) {
-        nuevoEstadoProyecto = 'En proceso';
-        const { error: updateProyectoError } = await supabase
-          .from('fct_acreditacion_solicitud')
-          .update({ 
+          .update({
             estado_solicitud_acreditacion: nuevoEstadoProyecto,
             fecha_finalizacion: null,
-            updated_at: new Date().toISOString()
+            updated_at: new Date().toISOString(),
           })
           .eq('id', requerimiento.id_proyecto);
 
         if (updateProyectoError) {
-          console.error('❌ Error actualizando estado del proyecto:', updateProyectoError);
+          console.error('Error actualizando estado del proyecto:', updateProyectoError);
         } else {
-          console.log(`✅ Proyecto ${requerimiento.codigo_proyecto} actualizado a "En proceso" - Ya no todos los requerimientos están completados`);
+          console.log(
+            `Proyecto ${requerimiento.codigo_proyecto} actualizado a "${SOLICITUD_ACREDITACION_STATUS.DOCUMENTACION_SUBIDA}" - Todos los requerimientos estan completados`
+          );
+        }
+      } else if (!allCompleted && isSolicitudStatusPostDocumentation(estadoProyectoActual)) {
+        nuevoEstadoProyecto = SOLICITUD_ACREDITACION_STATUS.EN_PROCESO;
+        const { error: updateProyectoError } = await supabase
+          .from('fct_acreditacion_solicitud')
+          .update({
+            estado_solicitud_acreditacion: nuevoEstadoProyecto,
+            fecha_finalizacion: null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', requerimiento.id_proyecto);
+
+        if (updateProyectoError) {
+          console.error('Error actualizando estado del proyecto:', updateProyectoError);
+        } else {
+          console.log(
+            `Proyecto ${requerimiento.codigo_proyecto} actualizado a "${SOLICITUD_ACREDITACION_STATUS.EN_PROCESO}" - Existen requerimientos pendientes`
+          );
         }
       }
     } catch (checkError) {
@@ -2643,6 +2847,7 @@ const createEmptyFieldRequestFormData = (): RequestFormData => ({
   requesterName: '',
   kickoffDate: '',
   projectCode: 'MY-',
+  esContratoMarco: '',
   requirement: '',
   clientName: '',
   clientContactName: '',
@@ -2823,6 +3028,7 @@ export const fetchFieldRequestFormSnapshotByProjectId = async (
     requesterName: solicitud.nombre_solicitante || '',
     kickoffDate: solicitud.fecha_reunion_arranque || '',
     projectCode: solicitud.codigo_proyecto || '',
+    esContratoMarco: solicitud.numero_contrato ? 'yes' : 'no',
     requirement: solicitud.requisito || '',
     clientName: solicitud.nombre_cliente || '',
     clientContactName: solicitud.nombre_contacto_cliente || solicitud.contacto_cliente_nombre || '',

@@ -1,11 +1,27 @@
 import React, { useState, useEffect } from 'react';
-import { Cliente, FieldRequestFormSnapshot, ProjectGalleryItem } from '../types';
+import {
+  Cliente,
+  FieldRequestFormSnapshot,
+  ProjectGalleryItem,
+  SOLICITUD_ACREDITACION_STATUS,
+} from '../types';
 import type { AcreditacionAccessLevel } from '../utils/navigationPolicy';
 import AssignResponsiblesModal, { ResponsablesData } from './AssignResponsiblesModal';
 import ProjectDetailView from './ProjectDetailView';
 import SelectCompanyAndRequirementsView from './SelectCompanyAndRequirementsView';
 import FieldRequestForm from './FieldRequestForm';
-import { updateResponsablesSolicitud, fetchEmpresaRequerimientos, createProyectoRequerimientos, updateProyectoRequerimientosResponsables, fetchProjectGalleryItems, deleteSolicitudAcreditacion, fetchFieldRequestFormSnapshotByProjectId, fetchClientes } from '../services/acreditacionService';
+import {
+  canRestrictedCollaboratorOpenSolicitudStatus,
+  canonicalizeSolicitudStatus,
+  fetchClientes,
+  fetchEmpresaRequerimientos,
+  fetchFieldRequestFormSnapshotByProjectId,
+  fetchProjectGalleryItems,
+  updateProyectoRequerimientosResponsables,
+  updateResponsablesSolicitud,
+  createProyectoRequerimientos,
+  deleteSolicitudAcreditacion,
+} from '../services/acreditacionService';
 import { supabase } from '../../../shared/api-client/supabase';
 
 interface ProjectGalleryV2Props {
@@ -118,13 +134,14 @@ const ProjectGalleryV2: React.FC<ProjectGalleryV2Props> = ({
 
   // Filtrar proyectos
   const filteredProjects = localProjects.filter(project => {
+    const canonicalStatus = String(canonicalizeSolicitudStatus(project.status));
     const matchesSearch = 
       project.projectName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       project.projectCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
       project.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (project.razonSocialContratista || '').toLowerCase().includes(searchTerm.toLowerCase());
     
-    const matchesStatus = filterStatus ? project.status === filterStatus : true;
+    const matchesStatus = filterStatus ? canonicalStatus === filterStatus : true;
     const matchesClient = filterClient ? project.clientName === filterClient : true;
     
     // Filtro por progreso
@@ -157,58 +174,72 @@ const ProjectGalleryV2: React.FC<ProjectGalleryV2Props> = ({
   };
 
   const getStatusColor = (status: string) => {
-    const statusLower = status.toLowerCase();
-    // Por asignar requerimientos - Amarillo/Ámbar (aún no iniciado)
-    if (statusLower.includes('por asignar requerimientos')) return 'bg-amber-100 text-amber-700 border-amber-200';
-    // En proceso - Azul (trabajo en progreso)
-    if (statusLower.includes('proceso')) return 'bg-blue-100 text-blue-700 border-blue-200';
-    // Finalizado - Verde (completado exitosamente)
-    if (statusLower.includes('finalizado')) return 'bg-green-100 text-green-700 border-green-200';
-    // Cancelado - Rojo (detenido/cancelado)
-    if (statusLower.includes('cancelado')) return 'bg-red-100 text-red-700 border-red-200';
-    // Atrasado - Naranja (proyecto con retraso)
-    if (statusLower.includes('atrasado')) return 'bg-orange-100 text-orange-700 border-orange-200';
+    const canonicalStatus = canonicalizeSolicitudStatus(status);
+
+    if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.POR_ASIGNAR_REQUERIMIENTOS) {
+      return 'bg-amber-100 text-amber-700 border-amber-200';
+    }
+    if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.POR_ASIGNAR_RESPONSABLES) {
+      return 'bg-yellow-100 text-yellow-700 border-yellow-200';
+    }
+    if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.EN_PROCESO) {
+      return 'bg-blue-100 text-blue-700 border-blue-200';
+    }
+    if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.DOCUMENTACION_SUBIDA) {
+      return 'bg-emerald-100 text-emerald-700 border-emerald-200';
+    }
+    if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.EN_REVISION_CLIENTE) {
+      return 'bg-cyan-100 text-cyan-700 border-cyan-200';
+    }
+    if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.ACREDITACION_FINALIZADA) {
+      return 'bg-green-100 text-green-700 border-green-200';
+    }
+    if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.CANCELADO) {
+      return 'bg-red-100 text-red-700 border-red-200';
+    }
+    if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.ATRASADO) {
+      return 'bg-orange-100 text-orange-700 border-orange-200';
+    }
+
     return 'bg-gray-100 text-gray-700 border-gray-200';
   };
 
   const getProjectBorderColor = (status: string) => {
-    const statusLower = status.toLowerCase();
-    // Por asignar requerimientos - Amarillo/Ámbar
-    if (statusLower.includes('por asignar requerimientos')) return 'border-amber-500 bg-amber-50';
-    // En proceso - Azul
-    if (statusLower.includes('proceso')) return 'border-blue-500 bg-blue-50';
-    // Finalizado - Verde
-    if (statusLower.includes('finalizado')) return 'border-green-500 bg-green-50';
-    // Cancelado - Rojo
-    if (statusLower.includes('cancelado')) return 'border-red-500 bg-red-50';
-    // Atrasado - Naranja
-    if (statusLower.includes('atrasado')) return 'border-orange-500 bg-orange-50';
+    const canonicalStatus = canonicalizeSolicitudStatus(status);
+
+    if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.POR_ASIGNAR_REQUERIMIENTOS) return 'border-amber-500 bg-amber-50';
+    if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.POR_ASIGNAR_RESPONSABLES) return 'border-yellow-500 bg-yellow-50';
+    if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.EN_PROCESO) return 'border-blue-500 bg-blue-50';
+    if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.DOCUMENTACION_SUBIDA) return 'border-emerald-500 bg-emerald-50';
+    if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.EN_REVISION_CLIENTE) return 'border-cyan-500 bg-cyan-50';
+    if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.ACREDITACION_FINALIZADA) return 'border-green-500 bg-green-50';
+    if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.CANCELADO) return 'border-red-500 bg-red-50';
+    if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.ATRASADO) return 'border-orange-500 bg-orange-50';
     return 'border-gray-500 bg-gray-50';
   };
 
   const getLeftBorderColor = (status: string) => {
-    const statusLower = status.toLowerCase();
-    // Por asignar requerimientos - Amarillo/Ámbar
-    if (statusLower.includes('por asignar requerimientos')) return 'border-l-4 border-l-amber-500';
-    // En proceso - Azul
-    if (statusLower.includes('proceso')) return 'border-l-4 border-l-blue-500';
-    // Finalizado - Verde
-    if (statusLower.includes('finalizado')) return 'border-l-4 border-l-green-500';
-    // Cancelado - Rojo
-    if (statusLower.includes('cancelado')) return 'border-l-4 border-l-red-500';
-    // Atrasado - Naranja
-    if (statusLower.includes('atrasado')) return 'border-l-4 border-l-orange-500';
+    const canonicalStatus = canonicalizeSolicitudStatus(status);
+
+    if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.POR_ASIGNAR_REQUERIMIENTOS) return 'border-l-4 border-l-amber-500';
+    if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.POR_ASIGNAR_RESPONSABLES) return 'border-l-4 border-l-yellow-500';
+    if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.EN_PROCESO) return 'border-l-4 border-l-blue-500';
+    if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.DOCUMENTACION_SUBIDA) return 'border-l-4 border-l-emerald-500';
+    if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.EN_REVISION_CLIENTE) return 'border-l-4 border-l-cyan-500';
+    if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.ACREDITACION_FINALIZADA) return 'border-l-4 border-l-green-500';
+    if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.CANCELADO) return 'border-l-4 border-l-red-500';
+    if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.ATRASADO) return 'border-l-4 border-l-orange-500';
     return 'border-l-4 border-l-gray-500';
   };
 
   const getProjectDuration = (createdAt: string) => {
     if (!createdAt) return { value: '-', unit: '' };
-    
+
     const created = new Date(createdAt);
     const now = new Date();
     const diffInMs = now.getTime() - created.getTime();
     const diffInDays = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
-    
+
     if (diffInDays === 0) {
       return { value: '0', unit: 'días' };
     } else if (diffInDays === 1) {
@@ -218,54 +249,48 @@ const ProjectGalleryV2: React.FC<ProjectGalleryV2Props> = ({
     }
   };
 
-  const normalizeProjectStatus = (status: string) => (status || '').toLowerCase().trim();
-
   const canOpenProjectCard = (
     project: ProjectGalleryItem,
     userAccessLevel: AcreditacionAccessLevel = accessLevel
   ): boolean => {
-    if (userAccessLevel === 'admin') {
+    if (userAccessLevel === 'admin' || userAccessLevel === 'accreditor') {
       return true;
     }
 
     if (userAccessLevel === 'editor' || userAccessLevel === 'viewer') {
-      const normalizedStatus = normalizeProjectStatus(project.status);
-      return (
-        normalizedStatus.includes('en proceso') ||
-        normalizedStatus.includes('finalizado') ||
-        normalizedStatus.includes('finalizada')
-      );
+      return canRestrictedCollaboratorOpenSolicitudStatus(project.status);
     }
 
     return false;
   };
 
+  const restrictedAccessStatusMessage =
+    `Solo administradores pueden abrir cualquier estado. ` +
+    `Editor/Viewer solo pueden abrir estados ${SOLICITUD_ACREDITACION_STATUS.EN_PROCESO}, ` +
+    `${SOLICITUD_ACREDITACION_STATUS.DOCUMENTACION_SUBIDA}, ` +
+    `${SOLICITUD_ACREDITACION_STATUS.EN_REVISION_CLIENTE} o ` +
+    `${SOLICITUD_ACREDITACION_STATUS.ACREDITACION_FINALIZADA}.`;
+
   const handleProjectClick = (project: ProjectGalleryItem) => {
     if (!canOpenProjectCard(project)) {
       alert(
-        'No puedes abrir esta solicitud en su estado actual. Solo administradores pueden abrir cualquier estado. Usuarios con rol editor/viewer solo pueden abrir estados "En proceso" o "Finalizado".'
+        `No puedes abrir esta solicitud en su estado actual. ${restrictedAccessStatusMessage}`
       );
       return;
     }
 
     setSelectedProject(project);
-    
-    const statusLower = project.status.toLowerCase();
-    
-    // Si el proyecto está en estado "Por asignar requerimientos", abre la vista de selección de empresa
-    if (statusLower.includes('por asignar requerimientos')) {
+
+    const canonicalStatus = canonicalizeSolicitudStatus(project.status);
+
+    if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.POR_ASIGNAR_REQUERIMIENTOS) {
       setShowCompanyView(true);
-    }
-    // Si el proyecto está en estado "Por asignar responsables", abre el modal de asignación
-    else if (statusLower.includes('por asignar responsables') || statusLower.includes('por asignar')) {
+    } else if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.POR_ASIGNAR_RESPONSABLES) {
       setIsModalOpen(true);
-    }
-    // Para cualquier otro estado, abre la vista de detalle
-    else {
+    } else {
       setShowDetailView(true);
     }
   };
-
   const handleCloseModal = () => {
     setIsModalOpen(false);
     setSelectedProject(null);
@@ -620,26 +645,33 @@ const ProjectGalleryV2: React.FC<ProjectGalleryV2Props> = ({
   const totalVehicles = localProjects.reduce((sum, p) => sum + p.totalVehicles, 0);
   const totalTasksCompleted = localProjects.reduce((sum, p) => sum + (p.completedTasks || 0), 0);
   const totalTasksAll = localProjects.reduce((sum, p) => sum + (p.totalTasks || 0), 0);
-  // Proyectos activos = todos los que NO estén cancelados ni finalizados
+  // Proyectos activos = todos los que NO estén cancelados ni en acreditación finalizada
   const activeProjects = localProjects.filter(p => {
-    const statusLower = p.status.toLowerCase();
-    return !statusLower.includes('cancelado') && !statusLower.includes('finalizado');
+    const canonicalStatus = canonicalizeSolicitudStatus(p.status);
+    return (
+      canonicalStatus !== SOLICITUD_ACREDITACION_STATUS.CANCELADO &&
+      canonicalStatus !== SOLICITUD_ACREDITACION_STATUS.ACREDITACION_FINALIZADA
+    );
   }).length;
   
   // Calcular proyectos atrasados: contar solo los que tienen estado "Atrasado"
   const overdueProjects = localProjects.filter(p => {
-    const statusLower = p.status.toLowerCase();
-    return statusLower.includes('atrasado');
+    const canonicalStatus = canonicalizeSolicitudStatus(p.status);
+    return canonicalStatus === SOLICITUD_ACREDITACION_STATUS.ATRASADO;
   }).length;
   
-  // Calcular tiempo promedio de proyectos finalizados (en días)
-  const finishedProjects = localProjects.filter(p => p.status.toLowerCase().includes('finalizado'));
+  // Calcular tiempo promedio de acreditaciones finalizadas (en días)
+  const finishedProjects = localProjects.filter(
+    p => canonicalizeSolicitudStatus(p.status) === SOLICITUD_ACREDITACION_STATUS.ACREDITACION_FINALIZADA
+  );
   const averageDuration = finishedProjects.length > 0
     ? Math.round(
         finishedProjects.reduce((sum, p) => {
           const created = new Date(p.createdAt);
-          const now = new Date();
-          const diffInDays = Math.floor((now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24));
+          const finishedAt = p.fechaFinalizacion ? new Date(p.fechaFinalizacion) : new Date();
+          const diffInDays = Math.floor(
+            (finishedAt.getTime() - created.getTime()) / (1000 * 60 * 60 * 24)
+          );
           return sum + diffInDays;
         }, 0) / finishedProjects.length
       )
@@ -765,7 +797,7 @@ const ProjectGalleryV2: React.FC<ProjectGalleryV2Props> = ({
                   <p className="text-2xl font-bold text-amber-600">{averageDuration}</p>
                   <p className="text-sm font-semibold text-amber-600">{averageDuration === 1 ? 'día' : 'días'}</p>
                 </div>
-                <p className="text-[10px] text-gray-400 mt-0.5">Proyectos finalizados</p>
+                <p className="text-[10px] text-gray-400 mt-0.5">Acreditaciones finalizadas</p>
               </div>
               <div className="w-12 h-12 bg-amber-100 rounded-lg flex items-center justify-center">
                 <span className="material-symbols-outlined text-amber-600 text-2xl">schedule</span>
@@ -834,12 +866,14 @@ const ProjectGalleryV2: React.FC<ProjectGalleryV2Props> = ({
                 className="form-select w-full rounded-lg border border-[#dbdfe6] bg-white px-3 py-2.5 text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none"
               >
                 <option value="">Todos los estados</option>
-                <option value="Por asignar requerimientos">Por asignar requerimientos</option>
-                <option value="Por asignar responsables">Por asignar responsables</option>
-                <option value="En proceso">En proceso</option>
-                <option value="Finalizado">Finalizado</option>
-                <option value="Cancelado">Cancelado</option>
-                <option value="Atrasado">Atrasado</option>
+                <option value={SOLICITUD_ACREDITACION_STATUS.POR_ASIGNAR_REQUERIMIENTOS}>Por asignar requerimientos</option>
+                <option value={SOLICITUD_ACREDITACION_STATUS.POR_ASIGNAR_RESPONSABLES}>Por asignar responsables</option>
+                <option value={SOLICITUD_ACREDITACION_STATUS.EN_PROCESO}>En proceso</option>
+                <option value={SOLICITUD_ACREDITACION_STATUS.DOCUMENTACION_SUBIDA}>{SOLICITUD_ACREDITACION_STATUS.DOCUMENTACION_SUBIDA}</option>
+                <option value={SOLICITUD_ACREDITACION_STATUS.EN_REVISION_CLIENTE}>{SOLICITUD_ACREDITACION_STATUS.EN_REVISION_CLIENTE}</option>
+                <option value={SOLICITUD_ACREDITACION_STATUS.ACREDITACION_FINALIZADA}>{SOLICITUD_ACREDITACION_STATUS.ACREDITACION_FINALIZADA}</option>
+                <option value={SOLICITUD_ACREDITACION_STATUS.CANCELADO}>Cancelado</option>
+                <option value={SOLICITUD_ACREDITACION_STATUS.ATRASADO}>Atrasado</option>
               </select>
             </div>
 
@@ -874,18 +908,21 @@ const ProjectGalleryV2: React.FC<ProjectGalleryV2Props> = ({
             filteredProjects.map((project) => {
               // Determinar color de hover según el estado
               const getHoverColor = () => {
-                const statusLower = project.status.toLowerCase();
-                if (statusLower.includes('por asignar requerimientos')) return 'group-hover:to-amber-50';
-                if (statusLower.includes('proceso')) return 'group-hover:to-blue-50';
-                if (statusLower.includes('finalizado')) return 'group-hover:to-green-50';
-                if (statusLower.includes('cancelado')) return 'group-hover:to-red-50';
-                if (statusLower.includes('atrasado')) return 'group-hover:to-orange-50';
+                const canonicalStatus = canonicalizeSolicitudStatus(project.status);
+                if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.POR_ASIGNAR_REQUERIMIENTOS) return 'group-hover:to-amber-50';
+                if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.POR_ASIGNAR_RESPONSABLES) return 'group-hover:to-yellow-50';
+                if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.EN_PROCESO) return 'group-hover:to-blue-50';
+                if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.DOCUMENTACION_SUBIDA) return 'group-hover:to-emerald-50';
+                if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.EN_REVISION_CLIENTE) return 'group-hover:to-cyan-50';
+                if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.ACREDITACION_FINALIZADA) return 'group-hover:to-green-50';
+                if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.CANCELADO) return 'group-hover:to-red-50';
+                if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.ATRASADO) return 'group-hover:to-orange-50';
                 return 'group-hover:to-gray-50';
               };
               const canOpenCard = canOpenProjectCard(project);
               const blockedCardTitle = canOpenCard
                 ? undefined
-                : 'Solo administradores pueden abrir cualquier estado. Editor/Viewer solo pueden abrir estados En proceso o Finalizado.';
+                : restrictedAccessStatusMessage;
               const razonSocialContratista = project.razonSocialContratista?.trim();
 
               return (
@@ -980,15 +1017,20 @@ const ProjectGalleryV2: React.FC<ProjectGalleryV2Props> = ({
                         const progressPercentage = project.totalTasks && project.totalTasks > 0 
                           ? Math.round(((project.completedTasks || 0) / project.totalTasks) * 100)
                           : 0;
-                        const displayStatus = (progressPercentage === 100 && project.status.toLowerCase().includes('proceso')) 
-                          ? 'Finalizado' 
-                          : project.status;
+                        const canonicalStatus = canonicalizeSolicitudStatus(project.status);
+                        const displayStatus =
+                          progressPercentage === 100 &&
+                          canonicalStatus === SOLICITUD_ACREDITACION_STATUS.EN_PROCESO
+                            ? SOLICITUD_ACREDITACION_STATUS.DOCUMENTACION_SUBIDA
+                            : canonicalStatus;
                         const statusColor = getStatusColor(displayStatus);
                         
                         return (
-                          <span className={`px-3 py-1.5 rounded-lg text-xs font-bold border-2 whitespace-nowrap shadow-sm ${statusColor}`}>
-                            {displayStatus}
-                          </span>
+                          <div className="flex flex-col items-end gap-1">
+                            <span className={`px-3 py-1.5 rounded-lg text-xs font-bold border-2 whitespace-nowrap shadow-sm ${statusColor}`}>
+                              {displayStatus}
+                            </span>
+                          </div>
                         );
                       })()}
                       {/* Botón de eliminar - Solo visible para cmansilla@myma.cl */}
@@ -1331,3 +1373,4 @@ const ProjectGalleryV2: React.FC<ProjectGalleryV2Props> = ({
 };
 
 export default ProjectGalleryV2;
+
