@@ -5,6 +5,7 @@ import {
   normalizeComplejidadPregunta,
   normalizeEstadoPregunta,
 } from '../services/preguntasService';
+import { fetchAdendaByCodigoMyma } from '../services/adendasService';
 import type {
   ComplejidadPregunta,
   EstadoPregunta,
@@ -29,6 +30,86 @@ const COMPLEJIDAD_RANK: Record<ComplejidadPregunta, number> = {
   Alta: 3,
 };
 
+const MILLISECONDS_PER_DAY = 1000 * 60 * 60 * 24;
+
+const parseFechaCompromisoDate = (value: string | null): Date | null => {
+  if (!value) return null;
+
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  const datePart = trimmed.slice(0, 10);
+  const dateMatch = datePart.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (dateMatch) {
+    const [, yearText, monthText, dayText] = dateMatch;
+    const year = Number(yearText);
+    const month = Number(monthText) - 1;
+    const day = Number(dayText);
+    return new Date(year, month, day);
+  }
+
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+
+  return parsed;
+};
+
+const toStartOfDay = (date: Date): Date => {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+};
+
+const formatFechaCompromiso = (value: string | null): string => {
+  if (!value) return 'Sin fecha';
+
+  const date = parseFechaCompromisoDate(value);
+  if (!date) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat('es-CL', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(date);
+};
+
+const getEstadoFechaCompromiso = (
+  value: string | null
+): { estado: string; detalle: string; className: string } => {
+  const fechaCompromiso = parseFechaCompromisoDate(value);
+
+  if (!fechaCompromiso) {
+    return {
+      estado: 'Sin fecha',
+      detalle: '',
+      className: 'bg-gray-100 text-gray-800',
+    };
+  }
+
+  const today = toStartOfDay(new Date());
+  const compromisoDay = toStartOfDay(fechaCompromiso);
+  const diffDays = Math.round((compromisoDay.getTime() - today.getTime()) / MILLISECONDS_PER_DAY);
+
+  if (diffDays >= 0) {
+    const suffix = diffDays === 1 ? '' : 's';
+    return {
+      estado: 'En proceso',
+      detalle: `${diffDays} día${suffix} faltante${suffix}`,
+      className: 'bg-emerald-100 text-emerald-800',
+    };
+  }
+
+  const atraso = Math.abs(diffDays);
+  const suffix = atraso === 1 ? '' : 's';
+  return {
+    estado: 'Atrasado',
+    detalle: `${atraso} día${suffix} atrasado${suffix}`,
+    className: 'bg-red-100 text-red-800',
+  };
+};
+
 const GestionAdendaView: React.FC = () => {
   const navigate = useNavigate();
   const { codigoMyma } = useParams<{ codigoMyma: string }>();
@@ -36,6 +117,7 @@ const GestionAdendaView: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [preguntas, setPreguntas] = useState<PreguntaGestion[]>([]);
+  const [fechaEntrega, setFechaEntrega] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filtros, setFiltros] = useState<FiltrosPregunta>({
     estado: 'Todos',
@@ -56,6 +138,7 @@ const GestionAdendaView: React.FC = () => {
       if (!codigoMyma) {
         if (isMounted) {
           setError('No se recibió el identificador de adenda.');
+          setFechaEntrega(null);
           setLoading(false);
         }
         return;
@@ -65,17 +148,22 @@ const GestionAdendaView: React.FC = () => {
         setLoading(true);
         setError(null);
 
-        const { preguntas: data } = await fetchPreguntasByCodigoMyma(codigoMyma);
+        const [{ preguntas: data }, adenda] = await Promise.all([
+          fetchPreguntasByCodigoMyma(codigoMyma),
+          fetchAdendaByCodigoMyma(codigoMyma),
+        ]);
 
         if (!isMounted) return;
 
         setPreguntas(data);
+        setFechaEntrega(adenda?.fecha_entrega || null);
       } catch (err: any) {
         if (!isMounted) return;
 
         console.error('Error loading preguntas:', err);
         setError(err?.message || 'No fue posible cargar las preguntas.');
         setPreguntas([]);
+        setFechaEntrega(null);
       } finally {
         if (isMounted) {
           setLoading(false);
@@ -108,6 +196,9 @@ const GestionAdendaView: React.FC = () => {
       const encargadoUi = pregunta.encargado_nombre || 'Sin encargado';
       const estrategiaUi = (pregunta.estrategia || '').trim();
       const respuestaIaUi = (pregunta.respuesta_ia || '').trim();
+      const fechaCompromisoUi = formatFechaCompromiso(pregunta.fecha_compromiso);
+      const estadoFecha = getEstadoFechaCompromiso(pregunta.fecha_compromiso);
+      const estadoFechaUi = `${estadoFecha.estado} ${estadoFecha.detalle}`.trim();
 
       const matchSearch =
         !searchLower ||
@@ -120,6 +211,8 @@ const GestionAdendaView: React.FC = () => {
         complejidadUi.toLowerCase().includes(searchLower) ||
         encargadoUi.toLowerCase().includes(searchLower) ||
         especialidadUi.toLowerCase().includes(searchLower) ||
+        fechaCompromisoUi.toLowerCase().includes(searchLower) ||
+        estadoFechaUi.toLowerCase().includes(searchLower) ||
         estrategiaUi.toLowerCase().includes(searchLower) ||
         respuestaIaUi.toLowerCase().includes(searchLower);
 
@@ -272,6 +365,48 @@ const GestionAdendaView: React.FC = () => {
 
   const resultStart = sortedPreguntas.length === 0 ? 0 : (currentPage - 1) * pageSize + 1;
   const resultEnd = Math.min(currentPage * pageSize, sortedPreguntas.length);
+  const resumenFechaEntrega = useMemo(() => {
+    const fechaEntregaDate = parseFechaCompromisoDate(fechaEntrega);
+
+    if (!fechaEntregaDate) {
+      return {
+        dias: '--',
+        detalle: 'Sin fecha de entrega',
+        fecha: 'Sin fecha',
+        badge: 'Sin fecha',
+        badgeClass: 'bg-gray-100 text-gray-800',
+        valueClass: 'text-gray-500',
+      };
+    }
+
+    const today = toStartOfDay(new Date());
+    const entregaDay = toStartOfDay(fechaEntregaDate);
+    const diffDays = Math.round((entregaDay.getTime() - today.getTime()) / MILLISECONDS_PER_DAY);
+    const fechaUi = formatFechaCompromiso(fechaEntrega);
+
+    if (diffDays >= 0) {
+      const suffix = diffDays === 1 ? '' : 's';
+      return {
+        dias: String(diffDays),
+        detalle: `día${suffix} faltante${suffix}`,
+        fecha: fechaUi,
+        badge: 'En plazo',
+        badgeClass: 'bg-emerald-100 text-emerald-800',
+        valueClass: 'text-emerald-700',
+      };
+    }
+
+    const atraso = Math.abs(diffDays);
+    const suffix = atraso === 1 ? '' : 's';
+    return {
+      dias: String(atraso),
+      detalle: `día${suffix} de atraso`,
+      fecha: fechaUi,
+      badge: 'Atrasada',
+      badgeClass: 'bg-red-100 text-red-800',
+      valueClass: 'text-red-700',
+    };
+  }, [fechaEntrega]);
 
   if (loading) {
     return (
@@ -329,7 +464,7 @@ const GestionAdendaView: React.FC = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mb-6">
           <div className="bg-white rounded-lg border border-gray-200 p-6">
             <h3 className="text-sm font-semibold text-gray-700 mb-4">Estado de Preguntas</h3>
             <div className="space-y-2">
@@ -383,6 +518,24 @@ const GestionAdendaView: React.FC = () => {
                   <span className="text-xs font-semibold text-[#111318]">{avanceGlobal}%</span>
                 </div>
               </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg border border-gray-200 p-6">
+            <h3 className="text-sm font-semibold text-gray-700 mb-4">Fecha de Entrega</h3>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className={`text-2xl font-bold mb-1 ${resumenFechaEntrega.valueClass}`}>
+                  {resumenFechaEntrega.dias}
+                </p>
+                <p className="text-xs text-gray-500">{resumenFechaEntrega.detalle}</p>
+                <p className="text-xs text-gray-500 mt-2">Entrega: {resumenFechaEntrega.fecha}</p>
+              </div>
+              <span
+                className={`px-2 py-1 text-xs font-medium rounded-full ${resumenFechaEntrega.badgeClass}`}
+              >
+                {resumenFechaEntrega.badge}
+              </span>
             </div>
           </div>
 
@@ -487,7 +640,7 @@ const GestionAdendaView: React.FC = () => {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1800px]">
+            <table className="w-full min-w-[2200px]">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -515,6 +668,12 @@ const GestionAdendaView: React.FC = () => {
                     Encargado
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Fecha compromiso
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Estado fecha
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Especialidad
                   </th>
                 </tr>
@@ -525,6 +684,7 @@ const GestionAdendaView: React.FC = () => {
                   const complejidadUi = normalizeComplejidadPregunta(pregunta.complejidad);
                   const especialidadUi = pregunta.especialidad_nombre || 'Sin especialidad';
                   const encargadoUi = pregunta.encargado_nombre || 'Sin encargado';
+                  const estadoFechaUi = getEstadoFechaCompromiso(pregunta.fecha_compromiso);
                   return (
                     <tr
                       key={pregunta.id}
@@ -570,6 +730,27 @@ const GestionAdendaView: React.FC = () => {
                         <div className="text-sm text-[#111318]">{encargadoUi}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-[#111318]">
+                          {formatFechaCompromiso(pregunta.fecha_compromiso)}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-center">
+                        <div className="flex flex-col items-center gap-1">
+                          <span
+                            className={`px-2 py-1 text-xs font-medium rounded-full ${estadoFechaUi.className}`}
+                          >
+                            {estadoFechaUi.estado}
+                          </span>
+                          {estadoFechaUi.detalle && (
+                            <span
+                              className={`px-2 py-1 text-[11px] font-medium rounded-full ${estadoFechaUi.className}`}
+                            >
+                              {estadoFechaUi.detalle}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
                         <span
                           className={`px-2 py-1 text-xs font-medium rounded-full ${getEspecialidadColor(
                             especialidadUi
@@ -584,7 +765,7 @@ const GestionAdendaView: React.FC = () => {
 
                 {paginatedPreguntas.length === 0 && (
                   <tr>
-                    <td className="px-6 py-8 text-sm text-gray-500 text-center" colSpan={9}>
+                    <td className="px-6 py-8 text-sm text-gray-500 text-center" colSpan={11}>
                       No hay preguntas para los filtros seleccionados.
                     </td>
                   </tr>

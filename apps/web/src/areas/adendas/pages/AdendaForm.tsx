@@ -194,6 +194,7 @@ const AdendaForm: React.FC<AdendaFormProps> = ({ onBack, onSave }) => {
   const [codigoMyma, setCodigoMyma] = useState('');
   const [nombre, setNombre] = useState('');
   const [descripcion, setDescripcion] = useState('');
+  const [fechaEntrega, setFechaEntrega] = useState('');
   const [estado, setEstado] = useState('');
   const [archivo, setArchivo] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -219,6 +220,7 @@ const AdendaForm: React.FC<AdendaFormProps> = ({ onBack, onSave }) => {
         setCodigoMyma(adenda.codigo_myma || '');
         setNombre(adenda.nombre || '');
         setDescripcion(adenda.descripcion || '');
+        setFechaEntrega(adenda.fecha_entrega || '');
         setEstado(adenda.estado || '');
       }
     } catch (error) {
@@ -247,6 +249,7 @@ const AdendaForm: React.FC<AdendaFormProps> = ({ onBack, onSave }) => {
         codigo_myma: codigoMyma || undefined,
         nombre: nombre || undefined,
         descripcion: descripcion || undefined,
+        fecha_entrega: fechaEntrega || undefined,
         estado: estado || undefined,
       };
 
@@ -506,6 +509,19 @@ const AdendaForm: React.FC<AdendaFormProps> = ({ onBack, onSave }) => {
                 rows={4}
                 className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
                 placeholder="Ingrese la descripción de la adenda"
+              />
+            </div>
+
+            {/* Fecha de entrega */}
+            <div>
+              <label className="block text-sm font-medium text-[#111318] mb-2">
+                Fecha de entrega
+              </label>
+              <input
+                type="date"
+                value={fechaEntrega}
+                onChange={(e) => setFechaEntrega(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
               />
             </div>
 

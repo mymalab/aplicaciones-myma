@@ -72,6 +72,7 @@ export const fetchAdendas = async (): Promise<AdendaListItem[]> => {
         codigo_myma: item.codigo_myma,
         nombre: item.nombre,
         estado: item.estado,
+        fecha_entrega: item.fecha_entrega,
         fecha_creacion: item.fecha_creacion || item.created_at,
       }));
     } else {
@@ -84,6 +85,62 @@ export const fetchAdendas = async (): Promise<AdendaListItem[]> => {
     // En caso de error, retornar datos dummy
     console.log('📦 Error al cargar, usando datos dummy para desarrollo');
     return DUMMY_ADENDAS;
+  }
+};
+
+/**
+ * Obtener una adenda por código MYMA
+ */
+export const fetchAdendaByCodigoMyma = async (codigoMyma: string): Promise<Adenda | null> => {
+  const codigo = codigoMyma.trim();
+  if (!codigo) {
+    return null;
+  }
+
+  const mapAdenda = (data: any): Adenda => ({
+    id: data.id,
+    tipo: data.tipo,
+    codigo_myma: data.codigo_myma,
+    nombre: data.nombre,
+    descripcion: data.descripcion,
+    fecha_entrega: data.fecha_entrega,
+    fecha_creacion: data.fecha_creacion || data.created_at,
+    fecha_actualizacion: data.fecha_actualizacion || data.updated_at,
+    estado: data.estado,
+  });
+
+  try {
+    const { data, error } = await supabase
+      .from('adendas')
+      .select('*')
+      .eq('codigo_myma', codigo)
+      .limit(1)
+      .maybeSingle();
+
+    if (!error && data) {
+      return mapAdenda(data);
+    }
+
+    const { data: ilikeData, error: ilikeError } = await supabase
+      .from('adendas')
+      .select('*')
+      .ilike('codigo_myma', codigo)
+      .limit(1)
+      .maybeSingle();
+
+    if (ilikeError) {
+      console.error('Error fetching adenda by codigo_myma:', ilikeError);
+      return null;
+    }
+
+    if (ilikeData) {
+      return mapAdenda(ilikeData);
+    }
+
+    return null;
+  } catch (error) {
+    console.error('Error in fetchAdendaByCodigoMyma:', error);
+    return null;
   }
 };
 
@@ -111,6 +168,7 @@ export const fetchAdendaById = async (id: number): Promise<Adenda | null> => {
       codigo_myma: data.codigo_myma,
       nombre: data.nombre,
       descripcion: data.descripcion,
+      fecha_entrega: data.fecha_entrega,
       fecha_creacion: data.fecha_creacion || data.created_at,
       fecha_actualizacion: data.fecha_actualizacion || data.updated_at,
       estado: data.estado,
@@ -134,6 +192,7 @@ export const createAdenda = async (payload: NewAdendaPayload): Promise<Adenda> =
           codigo_myma: payload.codigo_myma,
           nombre: payload.nombre,
           descripcion: payload.descripcion,
+          fecha_entrega: payload.fecha_entrega,
           estado: payload.estado,
         },
       ])
@@ -151,6 +210,7 @@ export const createAdenda = async (payload: NewAdendaPayload): Promise<Adenda> =
       codigo_myma: data.codigo_myma,
       nombre: data.nombre,
       descripcion: data.descripcion,
+      fecha_entrega: data.fecha_entrega,
       fecha_creacion: data.fecha_creacion || data.created_at,
       fecha_actualizacion: data.fecha_actualizacion || data.updated_at,
       estado: data.estado,
@@ -176,6 +236,7 @@ export const updateAdenda = async (
         codigo_myma: payload.codigo_myma,
         nombre: payload.nombre,
         descripcion: payload.descripcion,
+        fecha_entrega: payload.fecha_entrega,
         estado: payload.estado,
       })
       .eq('id', id)
@@ -193,6 +254,7 @@ export const updateAdenda = async (
       codigo_myma: data.codigo_myma,
       nombre: data.nombre,
       descripcion: data.descripcion,
+      fecha_entrega: data.fecha_entrega,
       fecha_creacion: data.fecha_creacion || data.created_at,
       fecha_actualizacion: data.fecha_actualizacion || data.updated_at,
       estado: data.estado,

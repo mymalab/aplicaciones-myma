@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import {
   fetchPreguntaById,
   fetchPreguntasCatalogos,
+  generateEstrategiaFromNotebookChat,
   getAdjuntosDescripcion,
   normalizeComplejidadPregunta,
   normalizeEstadoPregunta,
@@ -24,15 +25,39 @@ interface DraftPregunta {
   complejidad: ComplejidadPregunta;
   encargado_persona_id: number | null;
   especialidad_id: number | null;
+  fecha_compromiso: string;
   estrategia: string;
   respuesta_ia: string;
 }
+
+const toDateInputValue = (value: string | null): string => {
+  if (!value) return '';
+
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+
+  const datePart = trimmed.slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(datePart)) {
+    return datePart;
+  }
+
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) {
+    return '';
+  }
+
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, '0');
+  const day = String(parsed.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
 const buildDraftFromPregunta = (pregunta: PreguntaGestion): DraftPregunta => ({
   estado: normalizeEstadoPregunta(pregunta.estado),
   complejidad: normalizeComplejidadPregunta(pregunta.complejidad),
   encargado_persona_id: pregunta.encargado_persona_id,
   especialidad_id: pregunta.especialidad_id,
+  fecha_compromiso: toDateInputValue(pregunta.fecha_compromiso),
   estrategia: pregunta.estrategia || '',
   respuesta_ia: pregunta.respuesta_ia || '',
 });
@@ -45,10 +70,12 @@ const PreguntaDetailView: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [aiMessage, setAiMessage] = useState<string | null>(null);
   const [pregunta, setPregunta] = useState<PreguntaGestion | null>(null);
   const [personas, setPersonas] = useState<CatalogoPersona[]>([]);
   const [especialidades, setEspecialidades] = useState<CatalogoEspecialidad[]>([]);
   const [isEditing, setIsEditing] = useState(false);
+  const [generatingStrategy, setGeneratingStrategy] = useState(false);
   const [draft, setDraft] = useState<DraftPregunta | null>(null);
   const [selectedAdjunto, setSelectedAdjunto] = useState<PreguntaAdjunto | null>(null);
 
@@ -122,6 +149,7 @@ const PreguntaDetailView: React.FC = () => {
     if (!pregunta) return;
     setDraft(buildDraftFromPregunta(pregunta));
     setIsEditing(true);
+    setAiMessage(null);
     setSuccessMessage(null);
   };
 
@@ -129,6 +157,7 @@ const PreguntaDetailView: React.FC = () => {
     if (!pregunta) return;
     setDraft(buildDraftFromPregunta(pregunta));
     setIsEditing(false);
+    setAiMessage(null);
   };
 
   const handleSave = async () => {
@@ -157,6 +186,12 @@ const PreguntaDetailView: React.FC = () => {
 
       if (draft.especialidad_id !== pregunta.especialidad_id) {
         payload.especialidad_id = draft.especialidad_id;
+      }
+
+      const originalFechaCompromiso = toDateInputValue(pregunta.fecha_compromiso);
+      const draftFechaCompromiso = draft.fecha_compromiso.trim();
+      if (draftFechaCompromiso !== originalFechaCompromiso) {
+        payload.fecha_compromiso = draftFechaCompromiso || null;
       }
 
       const originalEstrategia = (pregunta.estrategia || '').trim();
@@ -190,12 +225,52 @@ const PreguntaDetailView: React.FC = () => {
       setPregunta(refreshed);
       setDraft(buildDraftFromPregunta(refreshed));
       setIsEditing(false);
+      setAiMessage(null);
       setSuccessMessage('Cambios guardados correctamente.');
     } catch (err: any) {
       console.error('Error saving pregunta:', err);
       setError(err?.message || 'No fue posible guardar los cambios.');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleGenerateStrategy = async () => {
+    if (!pregunta || !draft) return;
+
+    const adendaId = pregunta.adenda_id;
+    if (!adendaId || !Number.isFinite(adendaId)) {
+      setError('La pregunta no está asociada a una adenda válida.');
+      return;
+    }
+
+    const preguntaTexto = (pregunta.texto || '').trim();
+    if (!preguntaTexto || preguntaTexto === '-') {
+      setError('La pregunta no tiene texto para generar la estrategia con IA.');
+      return;
+    }
+
+    setGeneratingStrategy(true);
+    setError(null);
+    setSuccessMessage(null);
+    setAiMessage(null);
+
+    try {
+      const answer = await generateEstrategiaFromNotebookChat(adendaId, preguntaTexto);
+      setDraft((prev) =>
+        prev
+          ? {
+              ...prev,
+              estrategia: answer,
+            }
+          : prev
+      );
+      setAiMessage('La IA completó la estrategia. Revisa el texto y luego guarda.');
+    } catch (err: any) {
+      console.error('Error generating strategy with AI:', err);
+      setError(err?.message || 'No fue posible generar la estrategia con IA.');
+    } finally {
+      setGeneratingStrategy(false);
     }
   };
 
@@ -497,6 +572,31 @@ const PreguntaDetailView: React.FC = () => {
                 <p className="text-sm text-[#111318]">{especialidadUi}</p>
               )}
             </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-500 mb-2">Fecha compromiso</label>
+              {isEditing ? (
+                <input
+                  type="date"
+                  value={draft.fecha_compromiso}
+                  onChange={(event) =>
+                    setDraft((prev) =>
+                      prev
+                        ? {
+                            ...prev,
+                            fecha_compromiso: event.target.value,
+                          }
+                        : prev
+                    )
+                  }
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                />
+              ) : (
+                <p className="text-sm text-[#111318]">
+                  {toDateInputValue(pregunta.fecha_compromiso) || 'Sin fecha'}
+                </p>
+              )}
+            </div>
           </div>
 
           <div>
@@ -521,7 +621,26 @@ const PreguntaDetailView: React.FC = () => {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-500 mb-2">Estrategia</label>
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <label className="block text-sm font-medium text-gray-500">Estrategia</label>
+              {isEditing && (
+                <button
+                  type="button"
+                  onClick={handleGenerateStrategy}
+                  disabled={generatingStrategy || saving}
+                  className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-[#111318] hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  title="Generar estrategia con IA"
+                >
+                  <span className="material-symbols-outlined text-base leading-none">
+                    {generatingStrategy ? 'hourglass_top' : 'smart_toy'}
+                  </span>
+                  <span>{generatingStrategy ? 'Generando con IA...' : 'Generar con IA'}</span>
+                </button>
+              )}
+            </div>
+            {aiMessage && (
+              <p className="mb-2 text-xs text-emerald-700">{aiMessage}</p>
+            )}
             {isEditing ? (
               <textarea
                 rows={4}

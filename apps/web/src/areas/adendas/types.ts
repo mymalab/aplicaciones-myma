@@ -10,6 +10,7 @@ export interface Adenda {
   codigo_myma?: string;
   nombre?: string;
   descripcion?: string;
+  fecha_entrega?: string;
   fecha_creacion?: string;
   fecha_actualizacion?: string;
   estado?: string;
@@ -20,6 +21,7 @@ export interface NewAdendaPayload {
   codigo_myma?: string;
   nombre?: string;
   descripcion?: string;
+  fecha_entrega?: string;
   estado?: string;
 }
 
@@ -29,6 +31,7 @@ export interface AdendaListItem {
   codigo_myma?: string;
   nombre?: string;
   estado?: string;
+  fecha_entrega?: string;
   fecha_creacion?: string;
 }
 
@@ -79,6 +82,7 @@ export interface PreguntaGestion {
   especialidad_nombre: string | null;
   estrategia: string | null;
   respuesta_ia: string | null;
+  fecha_compromiso: string | null;
   adjuntos: PreguntaAdjunto[];
   adjuntos_resumen: PreguntaAdjuntosResumen;
   created_at: string | null;
@@ -91,5 +95,6 @@ export interface UpdatePreguntaPayload {
   especialidad_id?: number | null;
   estrategia?: string | null;
   respuesta_ia?: string | null;
+  fecha_compromiso?: string | null;
 }
 

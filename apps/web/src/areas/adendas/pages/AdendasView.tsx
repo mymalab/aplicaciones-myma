@@ -66,6 +66,16 @@ const AdendasView: React.FC = () => {
     );
   });
 
+  const formatDate = (value?: string) => {
+    if (!value) return '-';
+    // Si viene como YYYY-MM-DD (input type="date"), evitar desfase por zona horaria
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      const [year, month, day] = value.split('-');
+      return `${day}-${month}-${year}`;
+    }
+    return new Date(value).toLocaleDateString('es-CL');
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full min-h-screen">
@@ -153,7 +163,7 @@ const AdendasView: React.FC = () => {
                     Estado
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Fecha de creación
+                    Fecha de entrega
                   </th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Acciones
@@ -212,9 +222,7 @@ const AdendasView: React.FC = () => {
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {adenda.fecha_creacion
-                          ? new Date(adenda.fecha_creacion).toLocaleDateString('es-CL')
-                          : '-'}
+                        {formatDate(adenda.fecha_entrega)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                         <button

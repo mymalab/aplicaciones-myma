@@ -27,6 +27,7 @@ interface PreguntaRow {
   complejidad: string | null;
   estrategia?: string | null;
   respuesta_ia?: string | null;
+  fecha_compromiso?: string | null;
   created_at: string | null;
   pregunta_media?: unknown;
   encargado_persona_id?: number | null;
@@ -44,6 +45,13 @@ interface PreguntaReporteRow {
   estrategia?: string | null;
   respuesta_ia?: string | null;
   especialidad_id?: number | null;
+}
+
+interface NotebookChatResponse {
+  answer?: string | null;
+  detail?: string | string[] | null;
+  error?: string | null;
+  message?: string | null;
 }
 
 export interface PreguntaReporteData {
@@ -68,7 +76,9 @@ const PREGUNTAS_SELECT_CORE =
 const PREGUNTAS_SELECT_WITH_TEXT_FIELDS =
   `${PREGUNTAS_SELECT_CORE},estrategia,respuesta_ia`;
 const PREGUNTAS_SELECT_WITH_ASSIGNMENTS =
-  `${PREGUNTAS_SELECT_WITH_TEXT_FIELDS},encargado_persona_id,especialidad_id,pregunta_media(${ADJUNTOS_SELECT})`;
+  `${PREGUNTAS_SELECT_WITH_TEXT_FIELDS},encargado_persona_id,especialidad_id,fecha_compromiso,pregunta_media(${ADJUNTOS_SELECT})`;
+const PREGUNTAS_SELECT_LEGACY_WITH_FECHA =
+  `${PREGUNTAS_SELECT_CORE},fecha_compromiso,pregunta_media(${ADJUNTOS_SELECT})`;
 const PREGUNTAS_SELECT_LEGACY = `${PREGUNTAS_SELECT_CORE},pregunta_media(${ADJUNTOS_SELECT})`;
 const PREGUNTAS_REPORTE_SELECT_CORE =
   'id,adenda_id,numero,texto,estado,complejidad,especialidad_id';
@@ -76,6 +86,11 @@ const PREGUNTAS_REPORTE_SELECT_WITH_ESPECIALIDAD =
   `${PREGUNTAS_REPORTE_SELECT_CORE},especialidad`;
 const PREGUNTAS_REPORTE_SELECT_WITH_TEXT_FIELDS =
   `${PREGUNTAS_REPORTE_SELECT_WITH_ESPECIALIDAD},estrategia,respuesta_ia`;
+const ADENDAS_NOTEBOOK_CHAT_BASE_URL = (
+  import.meta.env.VITE_ADENDAS_NOTEBOOK_CHAT_BASE_URL || 'http://localhost:8000'
+)
+  .trim()
+  .replace(/\/+$/, '');
 
 const toNullableNumber = (value: unknown): number | null => {
   if (typeof value === 'number' && Number.isFinite(value)) {
@@ -94,6 +109,46 @@ const isRecord = (value: unknown): value is Record<string, unknown> => {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 };
 
+const getNotebookChatErrorMessage = (response: NotebookChatResponse | null): string | null => {
+  if (!response) return null;
+
+  if (typeof response.error === 'string' && response.error.trim()) {
+    return response.error.trim();
+  }
+
+  if (typeof response.message === 'string' && response.message.trim()) {
+    return response.message.trim();
+  }
+
+  if (typeof response.detail === 'string' && response.detail.trim()) {
+    return response.detail.trim();
+  }
+
+  if (Array.isArray(response.detail)) {
+    const detailMessage = response.detail
+      .map((item) => (typeof item === 'string' ? item.trim() : ''))
+      .find(Boolean);
+    if (detailMessage) {
+      return detailMessage;
+    }
+  }
+
+  return null;
+};
+
+const normalizeNotebookAnswerForTextarea = (rawAnswer: string): string => {
+  return rawAnswer
+    .replace(/\r\n/g, '\n')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/^\s*[-*]\s+/gm, '• ')
+    .replace(/\*\*(.*?)\*\*/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\[(\d+)\]/g, '')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+};
+
 const isMissingGestionColumnsError = (error: { message?: string | null; details?: string | null }): boolean => {
   const message = `${error.message || ''} ${error.details || ''}`.toLowerCase();
   return (
@@ -101,10 +156,13 @@ const isMissingGestionColumnsError = (error: { message?: string | null; details?
     message.includes('especialidad_id') ||
     message.includes('estrategia') ||
     message.includes('respuesta_ia') ||
+    message.includes('fecha_compromiso') ||
     message.includes('column preguntas.encargado_persona_id does not exist') ||
     message.includes('column preguntas.especialidad_id does not exist') ||
     message.includes('column preguntas.estrategia does not exist') ||
     message.includes('column preguntas.respuesta_ia does not exist')
+    ||
+    message.includes('column preguntas.fecha_compromiso does not exist')
   );
 };
 
@@ -322,6 +380,7 @@ const mapPreguntaRow = (
     especialidad_nombre: especialidadId ? especialidadesMap.get(especialidadId) || null : null,
     estrategia: typeof row.estrategia === 'string' ? row.estrategia : null,
     respuesta_ia: typeof row.respuesta_ia === 'string' ? row.respuesta_ia : null,
+    fecha_compromiso: typeof row.fecha_compromiso === 'string' ? row.fecha_compromiso : null,
     adjuntos,
     adjuntos_resumen: buildAdjuntosResumen(adjuntos),
     created_at: row.created_at,
@@ -361,16 +420,31 @@ const selectPreguntasByAdendaId = async (adendaId: number): Promise<PreguntaRow[
 
   const { data: legacyData, error: legacyError } = await supabase
     .from('preguntas')
+    .select(PREGUNTAS_SELECT_LEGACY_WITH_FECHA)
+    .eq('adenda_id', adendaId)
+    .order('numero', { ascending: true })
+    .order('id', { ascending: true });
+
+  if (!legacyError) {
+    return (legacyData || []) as unknown as PreguntaRow[];
+  }
+
+  if (!isMissingGestionColumnsError(legacyError)) {
+    throw legacyError;
+  }
+
+  const { data: legacyDataWithoutFecha, error: legacyErrorWithoutFecha } = await supabase
+    .from('preguntas')
     .select(PREGUNTAS_SELECT_LEGACY)
     .eq('adenda_id', adendaId)
     .order('numero', { ascending: true })
     .order('id', { ascending: true });
 
-  if (legacyError) {
-    throw legacyError;
+  if (legacyErrorWithoutFecha) {
+    throw legacyErrorWithoutFecha;
   }
 
-  return (legacyData || []) as unknown as PreguntaRow[];
+  return (legacyDataWithoutFecha || []) as unknown as PreguntaRow[];
 };
 
 const selectPreguntaById = async (preguntaId: number): Promise<PreguntaRow | null> => {
@@ -390,15 +464,29 @@ const selectPreguntaById = async (preguntaId: number): Promise<PreguntaRow | nul
 
   const { data: legacyData, error: legacyError } = await supabase
     .from('preguntas')
+    .select(PREGUNTAS_SELECT_LEGACY_WITH_FECHA)
+    .eq('id', preguntaId)
+    .maybeSingle();
+
+  if (!legacyError) {
+    return (legacyData || null) as unknown as PreguntaRow | null;
+  }
+
+  if (!isMissingGestionColumnsError(legacyError)) {
+    throw legacyError;
+  }
+
+  const { data: legacyDataWithoutFecha, error: legacyErrorWithoutFecha } = await supabase
+    .from('preguntas')
     .select(PREGUNTAS_SELECT_LEGACY)
     .eq('id', preguntaId)
     .maybeSingle();
 
-  if (legacyError) {
-    throw legacyError;
+  if (legacyErrorWithoutFecha) {
+    throw legacyErrorWithoutFecha;
   }
 
-  return (legacyData || null) as unknown as PreguntaRow | null;
+  return (legacyDataWithoutFecha || null) as unknown as PreguntaRow | null;
 };
 
 const selectPreguntasReporteRows = async (): Promise<PreguntaReporteRow[]> => {
@@ -656,6 +744,9 @@ export const updatePreguntaById = async (
   if (Object.prototype.hasOwnProperty.call(payload, 'respuesta_ia')) {
     updatePayload.respuesta_ia = payload.respuesta_ia ?? null;
   }
+  if (Object.prototype.hasOwnProperty.call(payload, 'fecha_compromiso')) {
+    updatePayload.fecha_compromiso = payload.fecha_compromiso ?? null;
+  }
 
   if (Object.keys(updatePayload).length === 0) {
     return;
@@ -674,5 +765,118 @@ export const updatePreguntaById = async (
     }
     throw error;
   }
+};
+
+const getNotebookIdByAdendaId = async (adendaId: number): Promise<string> => {
+  const { data, error } = await supabase
+    .from('adendas')
+    .select('notebooklm_id')
+    .eq('id', adendaId)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  const notebookId =
+    typeof data?.notebooklm_id === 'string' ? data.notebooklm_id.trim() : '';
+
+  if (!notebookId) {
+    throw new Error(
+      `La adenda ${adendaId} no tiene notebooklm_id configurado en la tabla adendas.`
+    );
+  }
+
+  return notebookId;
+};
+
+const buildNotebookPromptCandidates = (prompt: string) => [
+  { message: prompt },
+  { question: prompt },
+  { prompt },
+  { query: prompt },
+  { input: prompt },
+];
+
+export const generateEstrategiaFromNotebookChat = async (
+  adendaId: number,
+  prompt: string
+): Promise<string> => {
+  if (!Number.isFinite(adendaId)) {
+    throw new Error('No se recibió un identificador de adenda válido.');
+  }
+
+  const observationPrompt = prompt.trim();
+  if (!observationPrompt) {
+    throw new Error('La pregunta no contiene texto para enviar al asistente IA.');
+  }
+
+  const normalizedPrompt = [
+    'Responde en espanol tecnico y en texto plano.',
+    'No uses markdown (sin #, sin **, sin * como vinetas markdown).',
+    'Mantén secciones claras y legibles para pegar en un textarea.',
+    '',
+    `Observacion: ${observationPrompt}`,
+  ].join('\n');
+
+  if (!ADENDAS_NOTEBOOK_CHAT_BASE_URL) {
+    throw new Error('No hay baseUrl configurada para el chat de notebooks.');
+  }
+
+  const notebookId = await getNotebookIdByAdendaId(adendaId);
+  const endpoint = `${ADENDAS_NOTEBOOK_CHAT_BASE_URL}/notebooks/${encodeURIComponent(
+    notebookId
+  )}/chat`;
+
+  const payloadCandidates = buildNotebookPromptCandidates(normalizedPrompt);
+  const errors: string[] = [];
+
+  for (const payload of payloadCandidates) {
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const rawBody = await response.text();
+      let parsedBody: NotebookChatResponse | null = null;
+      if (rawBody) {
+        try {
+          parsedBody = JSON.parse(rawBody) as NotebookChatResponse;
+        } catch {
+          parsedBody = null;
+        }
+      }
+
+      if (!response.ok) {
+        const apiMessage = getNotebookChatErrorMessage(parsedBody);
+        errors.push(
+          apiMessage
+            ? `${response.status}: ${apiMessage}`
+            : `${response.status}: la API no pudo procesar la solicitud.`
+        );
+        continue;
+      }
+
+      const answer =
+        parsedBody && typeof parsedBody.answer === 'string'
+          ? parsedBody.answer.trim()
+          : '';
+
+      if (answer) {
+        return normalizeNotebookAnswerForTextarea(answer);
+      }
+
+      errors.push('La API respondió correctamente, pero no entregó el campo answer.');
+    } catch (error: any) {
+      errors.push(error?.message || 'Error de red al llamar la API de chat.');
+    }
+  }
+
+  const firstError = errors[0] || 'No fue posible obtener respuesta desde la API de chat.';
+  throw new Error(`No se pudo generar la estrategia con IA. ${firstError}`);
 };
 
