@@ -142,11 +142,14 @@ const ProjectGalleryV2: React.FC<ProjectGalleryV2Props> = ({
   // Filtrar proyectos
   const filteredProjects = localProjects.filter(project => {
     const canonicalStatus = String(canonicalizeSolicitudStatus(project.status));
+    const normalizedSearchTerm = searchTerm.toLowerCase();
     const matchesSearch = 
-      project.projectName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      project.projectCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      project.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (project.razonSocialContratista || '').toLowerCase().includes(searchTerm.toLowerCase());
+      project.projectName.toLowerCase().includes(normalizedSearchTerm) ||
+      project.projectCode.toLowerCase().includes(normalizedSearchTerm) ||
+      project.clientName.toLowerCase().includes(normalizedSearchTerm) ||
+      (project.razonSocialContratista || '').toLowerCase().includes(normalizedSearchTerm) ||
+      (project.requesterName || '').toLowerCase().includes(normalizedSearchTerm) ||
+      (project.projectManager || '').toLowerCase().includes(normalizedSearchTerm);
     
     const matchesStatus = filterStatus ? canonicalStatus === filterStatus : true;
     const matchesClient = filterClient ? project.clientName === filterClient : true;

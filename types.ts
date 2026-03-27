@@ -297,6 +297,7 @@ export interface ProjectGalleryItem {
   projectCode: string;
   projectName: string;
   clientName: string;
+  requesterName?: string;
   projectManager: string;
   fieldStartDate: string;
   totalWorkers: number;

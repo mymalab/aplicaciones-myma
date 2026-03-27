@@ -56,6 +56,14 @@ interface FieldRequestFormProps {
   };
 }
 
+const getTodayDate = (): string => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 const DEBUG_OWNER_EMAILS = new Set(['cmansilla@myma.cl', 'lab@myma.cl']);
 const FALLBACK_PROVEEDORES: ProveedorAcreditacion[] = MOCK_COMPANIES.map((company, index) => ({
   id: -(index + 1),
@@ -84,7 +92,7 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
 
   const isViewMode = mode === 'view';
   const [formData, setFormData] = useState<RequestFormData>({
-    requestDate: '',
+    requestDate: getTodayDate(),
     requesterName: '',
     kickoffDate: '',
     projectCode: PROJECT_CODE_PREFIX,
@@ -96,6 +104,7 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
     projectManager: '',
     accreditationFollowUp: '',
     fieldStartDate: '',
+    fechaEntregaCarpetaArranque: '',
     riskPreventionNotice: '',
     companyAccreditationRequired: '', // Iniciar sin selección
     requiereAcreditarTrabajadoresMyma: '',
@@ -203,6 +212,7 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
 
     setFormData({
       ...initialSnapshot.formData,
+      fechaEntregaCarpetaArranque: initialSnapshot.formData.fechaEntregaCarpetaArranque || '',
       esContratoMarco:
         initialSnapshot.formData.esContratoMarco ||
         (initialSnapshot.formData.numeroContrato ? 'yes' : 'no'),
@@ -247,7 +257,7 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
 
     // Resetear todos los campos del formulario a valores vacíos
     setFormData({
-      requestDate: '',
+      requestDate: getTodayDate(),
       requesterName: '',
       kickoffDate: '',
       projectCode: PROJECT_CODE_PREFIX,
@@ -259,6 +269,7 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
       projectManager: '',
       accreditationFollowUp: '',
       fieldStartDate: '',
+      fechaEntregaCarpetaArranque: '',
       riskPreventionNotice: '',
       companyAccreditationRequired: '', // Limpiar campo de radio (ninguno seleccionado)
       requiereAcreditarTrabajadoresMyma: '',
@@ -696,6 +707,15 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
         nextFormData.registroSstTerreo = '';
       }
 
+      if (name === 'requirement') {
+        const isCarpetaArranqueOnly = value === 'Carpeta de arranque';
+        if (isCarpetaArranqueOnly) {
+          nextFormData.fieldStartDate = '';
+        } else {
+          nextFormData.fechaEntregaCarpetaArranque = '';
+        }
+      }
+
       const esCambioFlagsContratista =
         name === 'requiereAcreditarContratista' || name === 'requiereAcreditarTrabajadoresContratista';
       const debeMantenerRazonSocialContratista =
@@ -869,6 +889,8 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
         console.warn('Error obteniendo usuario autenticado:', authError);
       }
 
+      const isCarpetaArranqueOnly = formData.requirement === 'Carpeta de arranque';
+
       if (!effectiveOmitirCamposObligatorios) {
       if (formData.esContratoMarco === 'yes' && !formData.projectCode.trim()) {
         alert('Debes ingresar el N° de contrato para Contrato Marco.');
@@ -895,7 +917,12 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
         return;
       }
 
-      if (!formData.fieldStartDate) {
+      if (isCarpetaArranqueOnly && !formData.fechaEntregaCarpetaArranque) {
+        alert('La fecha de entrega de Carpeta de arranque es obligatoria.');
+        return;
+      }
+
+      if (!isCarpetaArranqueOnly && !formData.fieldStartDate) {
         alert('La fecha de inicio de terreno es obligatoria.');
         return;
       }
@@ -1005,7 +1032,9 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
         requisito: formData.requirement || null,
         nombre_cliente: formData.clientName || null,
         jefe_proyectos_myma: formData.projectManager || null,
-        fecha_inicio_terreno: formData.fieldStartDate || null,
+        fecha_inicio_terreno: isCarpetaArranqueOnly ? null : formData.fieldStartDate || null,
+        fecha_entrega_carpeta_arranque:
+          isCarpetaArranqueOnly ? formData.fechaEntregaCarpetaArranque || null : null,
         aviso_prevencion_riesgo: formData.riskPreventionNotice === 'yes', // Convertir a boolean
         requiere_acreditar_empresa: requiereAcreditarEmpresa, // Convertir a boolean
         admin_contrato_myma: formData.contractAdmin || null,
@@ -1416,6 +1445,8 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
     const nombreCliente = randomItem(nombres);
     const empresaCliente = randomItem(empresas);
     const nombreResponsable = randomItem(nombres);
+    const requirementSelection = randomItem(requisitos);
+    const isCarpetaArranqueOnly = requirementSelection === 'Carpeta de arranque';
 
     // Rellenar formData
       setFormData({
@@ -1424,13 +1455,14 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
       kickoffDate: randomDate(randomInt(1, 7)),
       projectCode: `MY-${String(randomInt(1, 999)).padStart(3, '0')}-${new Date().getFullYear()}`,
       esContratoMarco: 'no',
-      requirement: randomItem(requisitos),
+      requirement: requirementSelection,
       clientName: empresaCliente,
       clientContactName: nombreCliente,
       clientContactEmail: `${normalizeEmail(nombreCliente)}@${normalizeEmail(empresaCliente)}.cl`,
       projectManager: personas.length > 0 ? randomItem(personas).nombre_completo : randomItem(nombres),
       accreditationFollowUp: '',
-      fieldStartDate: randomDate(randomInt(7, 30)),
+      fieldStartDate: isCarpetaArranqueOnly ? '' : randomDate(randomInt(7, 30)),
+      fechaEntregaCarpetaArranque: isCarpetaArranqueOnly ? randomDate(randomInt(7, 30)) : '',
       riskPreventionNotice: 'yes',
       companyAccreditationRequired: 'yes',
       requiereAcreditarTrabajadoresMyma: 'yes',
@@ -1680,13 +1712,17 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
     localAdminsContrato.some(
       (nombre) => nombre.toLowerCase() === formData.contractAdmin.trim().toLowerCase()
     );
+  const isCarpetaArranqueOnly = formData.requirement === 'Carpeta de arranque';
+  const hasRequiredDateForRequirement = isCarpetaArranqueOnly
+    ? formData.fechaEntregaCarpetaArranque.trim() !== ''
+    : formData.fieldStartDate.trim() !== '';
 
   const areAllRequiredFieldsCompleted =
     hasValidProjectCode &&
     formData.requirement.trim() !== '' &&
     formData.requestDate.trim() !== '' &&
     formData.requesterName.trim() !== '' &&
-    formData.fieldStartDate.trim() !== '' &&
+    hasRequiredDateForRequirement &&
     formData.clientName.trim() !== '' &&
     formData.projectManager.trim() !== '' &&
     formData.contractAdmin.trim() !== '' &&
@@ -1907,6 +1943,7 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
                   name="requestDate"
                   value={formData.requestDate}
                   onChange={handleInputChange}
+                  disabled
                   required
                   className="form-input w-full rounded-lg border border-[#dbdfe6] bg-white px-3 py-2.5 text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none" 
                 />
@@ -2042,7 +2079,7 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
               </label>
               <label className="flex flex-col gap-2">
                 <span className="text-[#111318] text-sm font-medium">
-                  Fecha de Inicio de Terreno <span className="text-red-500">*</span>
+                  Fecha de Inicio de Terreno {!isCarpetaArranqueOnly && <span className="text-red-500">*</span>}
                 </span>
                 <div className="relative">
                    <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-base">calendar_today</span>
@@ -2051,8 +2088,26 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
                     name="fieldStartDate"
                     value={formData.fieldStartDate}
                     onChange={handleInputChange}
-                    required
-                    className="form-input w-full rounded-lg border border-[#dbdfe6] bg-white px-3 py-2.5 text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none pl-10" 
+                    required={!isCarpetaArranqueOnly}
+                    disabled={isCarpetaArranqueOnly}
+                    className="form-input w-full rounded-lg border border-[#dbdfe6] bg-white px-3 py-2.5 text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none pl-10 disabled:bg-[#f3f4f6] disabled:text-[#9ca3af] disabled:cursor-not-allowed" 
+                  />
+                </div>
+              </label>
+              <label className="flex flex-col gap-2">
+                <span className="text-[#111318] text-sm font-medium">
+                  Fecha Entrega Carpeta de Arranque {isCarpetaArranqueOnly && <span className="text-red-500">*</span>}
+                </span>
+                <div className="relative">
+                  <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-base">calendar_today</span>
+                  <input
+                    type="date"
+                    name="fechaEntregaCarpetaArranque"
+                    value={formData.fechaEntregaCarpetaArranque}
+                    onChange={handleInputChange}
+                    required={isCarpetaArranqueOnly}
+                    disabled={!isCarpetaArranqueOnly}
+                    className="form-input w-full rounded-lg border border-[#dbdfe6] bg-white px-3 py-2.5 text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none pl-10 disabled:bg-[#f3f4f6] disabled:text-[#9ca3af] disabled:cursor-not-allowed"
                   />
                 </div>
               </label>
@@ -3113,7 +3168,6 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
 };
 
 export default FieldRequestForm;
-
 
 
 

@@ -47,10 +47,13 @@ const ProjectGalleryV2: React.FC<ProjectGalleryV2Props> = ({ projects, onProject
 
   // Filtrar proyectos
   const filteredProjects = projects.filter(project => {
+    const normalizedSearchTerm = searchTerm.toLowerCase();
     const matchesSearch = 
-      project.projectName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      project.projectCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      project.clientName.toLowerCase().includes(searchTerm.toLowerCase());
+      project.projectName.toLowerCase().includes(normalizedSearchTerm) ||
+      project.projectCode.toLowerCase().includes(normalizedSearchTerm) ||
+      project.clientName.toLowerCase().includes(normalizedSearchTerm) ||
+      (project.requesterName || '').toLowerCase().includes(normalizedSearchTerm) ||
+      (project.projectManager || '').toLowerCase().includes(normalizedSearchTerm);
     
     const matchesStatus = filterStatus ? project.status === filterStatus : true;
     const matchesClient = filterClient ? project.clientName === filterClient : true;
@@ -1030,4 +1033,3 @@ const ProjectGalleryV2: React.FC<ProjectGalleryV2Props> = ({ projects, onProject
 };
 
 export default ProjectGalleryV2;
-

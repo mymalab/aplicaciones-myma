@@ -242,6 +242,7 @@ export interface RequestFormData {
   projectManager: string;
   accreditationFollowUp: string;
   fieldStartDate: string;
+  fechaEntregaCarpetaArranque: string;
   riskPreventionNotice: string;
   companyAccreditationRequired: string;
   requiereAcreditarTrabajadoresMyma: string;
@@ -375,6 +376,7 @@ export interface ProjectGalleryItem {
   projectName: string;
   clientName: string;
   razonSocialContratista?: string;
+  requesterName?: string;
   projectManager: string;
   fieldStartDate: string;
   fechaInicioTerreno?: string;
