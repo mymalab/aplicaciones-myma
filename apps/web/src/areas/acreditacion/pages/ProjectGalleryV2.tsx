@@ -58,6 +58,13 @@ const ProjectGalleryV2: React.FC<ProjectGalleryV2Props> = ({
   const [projectToDelete, setProjectToDelete] = useState<ProjectGalleryItem | null>(null);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const isDrillDownView = showDetailView || showCompanyView || showSubmittedFormView;
+  const isDebugLogging = import.meta.env.DEV;
+
+  const debugLog = (...args: any[]) => {
+    if (isDebugLogging) {
+      globalThis.console.log(...args);
+    }
+  };
   
   // Estado local para los proyectos (se actualiza automáticamente cada 10 segundos)
   const [localProjects, setLocalProjects] = useState<ProjectGalleryItem[]>(projects);
@@ -399,40 +406,37 @@ const ProjectGalleryV2: React.FC<ProjectGalleryV2Props> = ({
   const handleSaveResponsables = async (responsables: ResponsablesData) => {
     // Validación inicial
     if (!selectedProject) {
-      console.error('❌ No hay proyecto seleccionado');
+      globalThis.console.error('No hay proyecto seleccionado');
       throw new Error('No hay proyecto seleccionado');
     }
 
     // Validar que el proyecto tenga un ID válido
     if (!selectedProject.id || typeof selectedProject.id !== 'number') {
-      console.error('❌ El proyecto no tiene un ID válido:', selectedProject);
+      globalThis.console.error('El proyecto no tiene un ID válido:', selectedProject);
       throw new Error(`El proyecto ${selectedProject.projectCode || 'desconocido'} no tiene un ID válido. Por favor, recarga la página.`);
     }
 
     try {
       setSaving(true);
       
-      console.log('═══════════════════════════════════════════════════');
-      console.log('💾 GUARDANDO RESPONSABLES Y REQUERIMIENTOS');
-      console.log('═══════════════════════════════════════════════════');
-      console.log('Proyecto ID:', selectedProject.id);
-      console.log('Proyecto:', selectedProject.projectCode);
-      console.log('Empresa:', responsables.empresa_nombre);
-      console.log('Responsables seleccionados:', {
-        JPRO: responsables.jpro_nombre || 'Sin asignar',
-        EPR: responsables.epr_nombre || 'Sin asignar',
-        RRHH: responsables.rrhh_nombre || 'Sin asignar',
-        Legal: responsables.legal_nombre || 'Sin asignar',
-        Acreditación: responsables.acreditacion_nombre || 'Sin asignar'
+      debugLog('[ProjectGalleryV2] Guardando responsables/requerimientos', {
+        projectId: selectedProject.id,
+        codigoProyecto: selectedProject.projectCode,
+        empresa: responsables.empresa_nombre || null,
+        totalRequerimientos: responsables.empresaRequerimientos?.length || 0,
+        rolesAsignados: {
+          jpro: Boolean(responsables.jpro_nombre),
+          epr: Boolean(responsables.epr_nombre),
+          rrhh: Boolean(responsables.rrhh_nombre),
+          legal: Boolean(responsables.legal_nombre),
+          acreditacion: Boolean(responsables.acreditacion_nombre)
+        }
       });
-      console.log('Requerimientos recibidos:', responsables.empresaRequerimientos?.length || 0);
-      console.log('Datos completos a guardar:', JSON.stringify(responsables, null, 2));
       
       // 1. Guardar responsables en la base de datos (esto es lo PRINCIPAL)
       // Esto también cambiará el estado a "En proceso"
-      console.log('\n📝 Paso 1: Guardando responsables en fct_acreditacion_solicitud...');
-      console.log('   ID del proyecto:', selectedProject.id);
-      console.log('   Datos a guardar:', {
+      debugLog('[ProjectGalleryV2] Paso 1 - updateResponsablesSolicitud', {
+        idProyecto: selectedProject.id,
         empresa_id: responsables.empresa_id,
         empresa_nombre: responsables.empresa_nombre,
         jpro_id: responsables.jpro_id,
@@ -448,8 +452,9 @@ const ProjectGalleryV2: React.FC<ProjectGalleryV2Props> = ({
       });
       
       const result = await updateResponsablesSolicitud(selectedProject.id, responsables);
-      console.log('✅ Responsables guardados exitosamente');
-      console.log('📊 Resultado de la actualización:', result);
+      debugLog('[ProjectGalleryV2] Responsables guardados en solicitud', {
+        actualizado: Boolean(result)
+      });
       
       // Actualizar el proyecto seleccionado con los nuevos datos
       if (result) {
@@ -487,11 +492,11 @@ const ProjectGalleryV2: React.FC<ProjectGalleryV2Props> = ({
               : p
           )
         );
-        console.log('🔄 Proyecto actualizado en el estado local');
+        debugLog('[ProjectGalleryV2] Proyecto actualizado en estado local');
       }
 
       // 2. Actualizar nombres de responsables en brg_acreditacion_solicitud_requerimiento
-      console.log('\n📝 Paso 2: Actualizando responsables en brg_acreditacion_solicitud_requerimiento...');
+      debugLog('[ProjectGalleryV2] Paso 2 - updateProyectoRequerimientosResponsables');
       try {
         await updateProyectoRequerimientosResponsables(
           selectedProject.projectCode,
@@ -504,34 +509,17 @@ const ProjectGalleryV2: React.FC<ProjectGalleryV2Props> = ({
             acreditacion_nombre: responsables.acreditacion_nombre,
           }
         );
-        console.log('✅ Responsables actualizados en requerimientos exitosamente');
+        debugLog('[ProjectGalleryV2] Responsables actualizados en requerimientos');
       } catch (reqError) {
-        console.error('❌ Error actualizando responsables en requerimientos:', reqError);
-        console.warn('⚠️ Los responsables se guardaron en fct_acreditacion_solicitud, pero hubo un problema actualizando los requerimientos');
+        globalThis.console.error('Error actualizando responsables en requerimientos:', reqError);
       }
       
       // 3. Guardar requerimientos del proyecto si hay empresa y requerimientos (legacy - ya no se usa)
       if (responsables.empresa_nombre && responsables.empresaRequerimientos && responsables.empresaRequerimientos.length > 0) {
         try {
-          console.log('\n📋 Paso 2: Guardando requerimientos en brg_acreditacion_solicitud_requerimiento...');
-          console.log(`Total de requerimientos a guardar: ${responsables.empresaRequerimientos.length}`);
-          console.log('\nVista previa de los primeros 3 requerimientos:');
-          
-          responsables.empresaRequerimientos.slice(0, 3).forEach((req, i) => {
-            const nombreResp = req.responsable === 'JPRO' ? responsables.jpro_nombre :
-                              req.responsable === 'EPR' ? responsables.epr_nombre :
-                              req.responsable === 'RRHH' ? responsables.rrhh_nombre :
-                              req.responsable === 'Legal' ? responsables.legal_nombre : 'Sin asignar';
-            
-            console.log(`\n  ${i + 1}. ${req.requerimiento}`);
-            console.log(`     Cargo: ${req.responsable}`);
-            console.log(`     Nombre Responsable: ${nombreResp || 'Sin asignar'}`);
-            console.log(`     Categoría: ${req.categoria_requerimiento}`);
+          debugLog('[ProjectGalleryV2] Paso legacy createProyectoRequerimientos', {
+            totalRequerimientos: responsables.empresaRequerimientos.length
           });
-          
-          if (responsables.empresaRequerimientos.length > 3) {
-            console.log(`\n  ... y ${responsables.empresaRequerimientos.length - 3} más`);
-          }
           
           // Crear requerimientos del proyecto con los nombres de responsables seleccionados
           await createProyectoRequerimientos(
@@ -546,37 +534,23 @@ const ProjectGalleryV2: React.FC<ProjectGalleryV2Props> = ({
             }
           );
           
-          console.log('\n✅ Requerimientos del proyecto guardados exitosamente en la BD');
-          console.log('═══════════════════════════════════════════════════\n');
+          debugLog('[ProjectGalleryV2] Requerimientos legacy guardados correctamente');
         } catch (reqError) {
-          // Si falla la creación de requerimientos, mostrar error detallado
-          console.error('═══════════════════════════════════════════════════');
-          console.error('❌ ERROR AL GUARDAR REQUERIMIENTOS');
-          console.error('═══════════════════════════════════════════════════');
-          console.error('Error completo:', reqError);
-          console.error('Tipo:', typeof reqError);
-          
-          if (reqError instanceof Error) {
-            console.error('Mensaje:', reqError.message);
-            console.error('Stack:', reqError.stack);
-          }
-          
-          console.error('═══════════════════════════════════════════════════\n');
-          console.warn('⚠️ Los responsables se guardaron, pero hubo un problema con los requerimientos');
+          globalThis.console.error('Error al guardar requerimientos (legacy):', reqError);
           
           // Mostrar error al usuario
           setError(`Los responsables se guardaron correctamente, pero hubo un error al crear los requerimientos: ${reqError instanceof Error ? reqError.message : String(reqError)}`);
           setTimeout(() => setError(null), 10000);
         }
       } else {
-        console.log('\n⚠️ No hay requerimientos para guardar');
-        console.log('Razones posibles:');
-        console.log('  - No se seleccionó empresa:', !responsables.empresa_nombre);
-        console.log('  - No hay requerimientos:', !responsables.empresaRequerimientos || responsables.empresaRequerimientos.length === 0);
+        debugLog('[ProjectGalleryV2] No hay requerimientos para guardar en flujo legacy', {
+          empresaSeleccionada: Boolean(responsables.empresa_nombre),
+          totalRequerimientos: responsables.empresaRequerimientos?.length || 0
+        });
       }
       
       // 3. Notificar al componente padre para que recargue los datos
-      console.log('🔄 Notificando al componente padre para recargar datos...');
+      debugLog('[ProjectGalleryV2] Notificando recarga al componente padre');
       if (onProjectUpdate) {
         onProjectUpdate();
         // Esperar un momento para que el componente padre tenga tiempo de recargar
@@ -605,16 +579,16 @@ const ProjectGalleryV2: React.FC<ProjectGalleryV2Props> = ({
       });
       
       // Cerrar modal después de un breve delay para que el usuario vea el mensaje
-      console.log('⏳ Esperando antes de cerrar el modal...');
+      debugLog('[ProjectGalleryV2] Esperando antes de cerrar modal');
       await new Promise(resolve => setTimeout(resolve, 1500));
       
-      console.log('🚪 Cerrando modal...');
+      debugLog('[ProjectGalleryV2] Cerrando modal');
       handleCloseModal();
       
       // Ocultar mensaje de éxito después de 5 segundos
       setTimeout(() => setSuccess(null), 5000);
     } catch (error) {
-      console.error('❌ Error guardando responsables:', error);
+      globalThis.console.error('Error guardando responsables:', error);
       
       // Mostrar error detallado
       let errorMsg = 'Error al guardar los responsables.';

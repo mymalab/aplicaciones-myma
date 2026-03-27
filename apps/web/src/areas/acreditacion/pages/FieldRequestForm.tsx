@@ -7,6 +7,7 @@ import {
   MOCK_COMPANIES,
   Persona,
   Cliente,
+  ProveedorAcreditacion,
   FieldRequestFormSnapshot,
   SOLICITUD_ACREDITACION_STATUS,
 } from '../types';
@@ -25,6 +26,7 @@ import {
   logResumenSolicitudAcreditacion,
   crearCarpetasProyecto,
   enviarIdProyectoN8n,
+  upsertTrabajadoresExternos,
 } from '../services/acreditacionService';
 import { supabase } from '@shared/api-client/supabase';
 
@@ -55,6 +57,11 @@ interface FieldRequestFormProps {
 }
 
 const DEBUG_OWNER_EMAILS = new Set(['cmansilla@myma.cl', 'lab@myma.cl']);
+const FALLBACK_PROVEEDORES: ProveedorAcreditacion[] = MOCK_COMPANIES.map((company, index) => ({
+  id: -(index + 1),
+  nombre_proveedor: company.name,
+  rut: '',
+}));
 
 const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
   onBack,
@@ -126,20 +133,23 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
   const [horarios, setHorarios] = useState<Horario[]>([]);
   const [vehiculosMyma, setVehiculosMyma] = useState<VehiculoMyma[]>([]);
   const [vehiculosContratista, setVehiculosContratista] = useState<VehiculoContratista[]>([]);
-  const [proveedores, setProveedores] = useState<string[]>([]);
+  const [proveedores, setProveedores] = useState<ProveedorAcreditacion[]>(FALLBACK_PROVEEDORES);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   
   // Estados para el buscador de solicitante
   const [personas, setPersonas] = useState<Persona[]>([]);
   const [filteredPersonasSolicitante, setFilteredPersonasSolicitante] = useState<Persona[]>([]);
+  const [localSolicitantes, setLocalSolicitantes] = useState<string[]>([]);
   const [searchQuerySolicitante, setSearchQuerySolicitante] = useState('');
   const [selectedPersonaSolicitante, setSelectedPersonaSolicitante] = useState<Persona | null>(null);
   const [showDropdownSolicitante, setShowDropdownSolicitante] = useState(false);
   const [filteredPersonasJefeProyecto, setFilteredPersonasJefeProyecto] = useState<Persona[]>([]);
+  const [localJefesProyecto, setLocalJefesProyecto] = useState<string[]>([]);
   const [searchQueryJefeProyecto, setSearchQueryJefeProyecto] = useState('');
   const [selectedPersonaJefeProyecto, setSelectedPersonaJefeProyecto] = useState<Persona | null>(null);
   const [showDropdownJefeProyecto, setShowDropdownJefeProyecto] = useState(false);
   const [filteredPersonasAdminContrato, setFilteredPersonasAdminContrato] = useState<Persona[]>([]);
+  const [localAdminsContrato, setLocalAdminsContrato] = useState<string[]>([]);
   const [searchQueryAdminContrato, setSearchQueryAdminContrato] = useState('');
   const [selectedPersonaAdminContrato, setSelectedPersonaAdminContrato] = useState<Persona | null>(null);
   const [showDropdownAdminContrato, setShowDropdownAdminContrato] = useState(false);
@@ -282,12 +292,15 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
     setVehiculosContratista([]);
     setSearchQuerySolicitante('');
     setSelectedPersonaSolicitante(null);
+    setLocalSolicitantes([]);
     setShowDropdownSolicitante(false);
     setSearchQueryJefeProyecto('');
     setSelectedPersonaJefeProyecto(null);
+    setLocalJefesProyecto([]);
     setShowDropdownJefeProyecto(false);
     setSearchQueryAdminContrato('');
     setSelectedPersonaAdminContrato(null);
+    setLocalAdminsContrato([]);
     setShowDropdownAdminContrato(false);
     setSearchQueryCliente('');
     setSelectedCliente(null);
@@ -299,12 +312,14 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
     const loadProveedores = async () => {
       try {
         const proveedoresData = await fetchProveedores();
-        const nombresProveedores = proveedoresData.map(p => p.nombre_proveedor);
-        setProveedores(nombresProveedores);
+        if (proveedoresData.length > 0) {
+          setProveedores(proveedoresData);
+        } else {
+          setProveedores(FALLBACK_PROVEEDORES);
+        }
       } catch (error) {
         console.error('Error cargando proveedores:', error);
-        // Si falla, usar MOCK_COMPANIES como fallback
-        setProveedores(MOCK_COMPANIES.map(c => c.name));
+        setProveedores(FALLBACK_PROVEEDORES);
       }
     };
 
@@ -782,6 +797,57 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
     setWorkersContratista(prev => prev.filter(w => w.id !== id));
   };
 
+  const handleAddLocalSolicitante = (rawName: string) => {
+    const nombre = rawName.trim();
+    if (!nombre) return;
+
+    setLocalSolicitantes(prev => {
+      if (prev.some(item => item.toLowerCase() === nombre.toLowerCase())) {
+        return prev;
+      }
+      return [...prev, nombre];
+    });
+
+    setSelectedPersonaSolicitante(null);
+    setSearchQuerySolicitante(nombre);
+    setFormData(prev => ({ ...prev, requesterName: nombre }));
+    setShowDropdownSolicitante(false);
+  };
+
+  const handleAddLocalJefeProyecto = (rawName: string) => {
+    const nombre = rawName.trim();
+    if (!nombre) return;
+
+    setLocalJefesProyecto(prev => {
+      if (prev.some(item => item.toLowerCase() === nombre.toLowerCase())) {
+        return prev;
+      }
+      return [...prev, nombre];
+    });
+
+    setSelectedPersonaJefeProyecto(null);
+    setSearchQueryJefeProyecto(nombre);
+    setFormData(prev => ({ ...prev, projectManager: nombre }));
+    setShowDropdownJefeProyecto(false);
+  };
+
+  const handleAddLocalAdminContrato = (rawName: string) => {
+    const nombre = rawName.trim();
+    if (!nombre) return;
+
+    setLocalAdminsContrato(prev => {
+      if (prev.some(item => item.toLowerCase() === nombre.toLowerCase())) {
+        return prev;
+      }
+      return [...prev, nombre];
+    });
+
+    setSelectedPersonaAdminContrato(null);
+    setSearchQueryAdminContrato(nombre);
+    setFormData(prev => ({ ...prev, contractAdmin: nombre }));
+    setShowDropdownAdminContrato(false);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -825,7 +891,7 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
       }
 
       if (!formData.requesterName) {
-        alert('Debes seleccionar un nombre de solicitante desde el buscador.');
+        alert('Debes seleccionar o agregar un nombre de solicitante.');
         return;
       }
 
@@ -840,12 +906,12 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
       }
 
       if (!formData.projectManager) {
-        alert('Debes seleccionar un Jefe de Proyectos MYMA desde el buscador.');
+        alert('Debes seleccionar o agregar un Jefe de Proyectos MYMA.');
         return;
       }
 
       if (!formData.contractAdmin) {
-        alert('Debes seleccionar un Admin. de Contrato MYMA desde el buscador.');
+        alert('Debes seleccionar o agregar un Admin. de Contrato MYMA.');
         return;
       }
 
@@ -1023,6 +1089,49 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
       
       // Guardar trabajadores en fct_acreditacion_solicitud_trabajador_manual
       if (result.id && result.codigo_proyecto) {
+        if (requiereAcreditarTrabajadoresContratista && workersContratista.length > 0) {
+          const workersToSyncExternal = workersContratista.filter(
+            (worker) => worker.syncExternalOnSave
+          );
+
+          if (workersToSyncExternal.length > 0) {
+            try {
+              const selectedProveedor = proveedores.find(
+                (proveedor) =>
+                  proveedor.nombre_proveedor === formData.razonSocialContratista
+              );
+              const empresaRut = (selectedProveedor?.rut || '').trim();
+
+              if (!empresaRut) {
+                throw new Error(
+                  'No se encontro el RUT del contratista para sincronizar dim_trabajador_externo.'
+                );
+              }
+
+              await upsertTrabajadoresExternos(
+                workersToSyncExternal.map((worker) => ({
+                  nombre_completo: worker.name,
+                  rut: worker.rut || '',
+                  telefono: worker.phone || null,
+                  empresa_razon_social: formData.razonSocialContratista.trim(),
+                  empresa_rut: empresaRut,
+                }))
+              );
+              console.log(
+                `Sincronizados ${workersToSyncExternal.length} trabajador(es) en dim_trabajador_externo`
+              );
+            } catch (externalSyncError) {
+              console.error(
+                'ERROR al sincronizar trabajadores externos en dim_trabajador_externo:',
+                externalSyncError
+              );
+              alert(
+                'ADVERTENCIA: La solicitud se guardo, pero hubo un error al sincronizar trabajadores externos en la dimension.'
+              );
+            }
+          }
+        }
+
         try {
           console.log('👷 Guardando trabajadores del proyecto...');
           await createProyectoTrabajadores(
@@ -1280,6 +1389,7 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
     if (isViewMode) return;
     const randomInt = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min;
     const randomItem = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
+    const proveedoresNombres = proveedores.map((proveedor) => proveedor.nombre_proveedor);
     
     // Generar fechas aleatorias
     const today = new Date();
@@ -1335,7 +1445,8 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
       requiereAcreditarContratista: 'yes',
       requiereAcreditarTrabajadoresContratista: 'yes',
       modalidadContrato: randomItem(modalidades),
-      razonSocialContratista: proveedores.length > 0 ? randomItem(proveedores) : randomItem(empresas),
+      razonSocialContratista:
+        proveedoresNombres.length > 0 ? randomItem(proveedoresNombres) : randomItem(empresas),
       nombreResponsableContratista: nombreResponsable,
       telefonoResponsableContratista: `+56 9 ${randomInt(1000, 9999)} ${randomInt(1000, 9999)}`,
       emailResponsableContratista: `${normalizeEmail(nombreResponsable)}@contratista.cl`,
@@ -1514,6 +1625,62 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
       formData.emailResponsableContratista.trim() !== ''
     );
 
+  const solicitanteQueryTrimmed = searchQuerySolicitante.trim();
+  const solicitanteQueryLower = solicitanteQueryTrimmed.toLowerCase();
+  const filteredLocalSolicitantes = localSolicitantes.filter((nombre) =>
+    nombre.toLowerCase().includes(solicitanteQueryLower)
+  );
+  const hasExactPersonaMatch = (queryLower: string, localNames: string[]) => {
+    if (!queryLower) return false;
+    return (
+      personas.some((persona) => {
+        const nombre = persona.nombre_completo.toLowerCase();
+        const rut = persona.rut.toLowerCase();
+        const nombreConRut = `${nombre} - ${rut}`;
+        return (
+          nombre === queryLower ||
+          rut === queryLower ||
+          nombreConRut === queryLower
+        );
+      }) ||
+      localNames.some((nombre) => nombre.toLowerCase() === queryLower)
+    );
+  };
+  const hasExactSolicitanteMatch =
+    solicitanteQueryTrimmed.length > 0 &&
+    hasExactPersonaMatch(solicitanteQueryLower, localSolicitantes);
+  const isRequesterLocalSelection =
+    formData.requesterName.trim() !== '' &&
+    localSolicitantes.some(
+      (nombre) => nombre.toLowerCase() === formData.requesterName.trim().toLowerCase()
+    );
+  const jefeProyectoQueryTrimmed = searchQueryJefeProyecto.trim();
+  const jefeProyectoQueryLower = jefeProyectoQueryTrimmed.toLowerCase();
+  const filteredLocalJefesProyecto = localJefesProyecto.filter((nombre) =>
+    nombre.toLowerCase().includes(jefeProyectoQueryLower)
+  );
+  const hasExactJefeProyectoMatch =
+    jefeProyectoQueryTrimmed.length > 0 &&
+    hasExactPersonaMatch(jefeProyectoQueryLower, localJefesProyecto);
+  const isProjectManagerLocalSelection =
+    formData.projectManager.trim() !== '' &&
+    localJefesProyecto.some(
+      (nombre) => nombre.toLowerCase() === formData.projectManager.trim().toLowerCase()
+    );
+  const adminContratoQueryTrimmed = searchQueryAdminContrato.trim();
+  const adminContratoQueryLower = adminContratoQueryTrimmed.toLowerCase();
+  const filteredLocalAdminsContrato = localAdminsContrato.filter((nombre) =>
+    nombre.toLowerCase().includes(adminContratoQueryLower)
+  );
+  const hasExactAdminContratoMatch =
+    adminContratoQueryTrimmed.length > 0 &&
+    hasExactPersonaMatch(adminContratoQueryLower, localAdminsContrato);
+  const isContractAdminLocalSelection =
+    formData.contractAdmin.trim() !== '' &&
+    localAdminsContrato.some(
+      (nombre) => nombre.toLowerCase() === formData.contractAdmin.trim().toLowerCase()
+    );
+
   const areAllRequiredFieldsCompleted =
     hasValidProjectCode &&
     formData.requirement.trim() !== '' &&
@@ -1649,49 +1816,52 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
               </h3>
             </div>
             <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              <label className="flex flex-col gap-2">
+              <div className="flex flex-col gap-2">
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-[#111318] text-sm font-medium">
                     Código de Proyecto <span className="text-red-500">*</span>
                   </span>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      setFormData(prev => {
-                        const isContratoMarcoActivo = prev.esContratoMarco === 'yes';
+                  <div className="inline-flex items-center gap-2 text-xs text-[#616f89] whitespace-nowrap">
+                    <span>Contrato Marco?</span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setFormData(prev => {
+                          const isContratoMarcoActivo = prev.esContratoMarco === 'yes';
 
-                        if (isContratoMarcoActivo) {
+                          if (isContratoMarcoActivo) {
+                            return {
+                              ...prev,
+                              esContratoMarco: 'no',
+                              projectCode: formatProjectCodeInput(prev.projectCode || ''),
+                            };
+                          }
+
                           return {
                             ...prev,
-                            esContratoMarco: 'no',
-                            projectCode: formatProjectCodeInput(prev.projectCode || ''),
+                            esContratoMarco: 'yes',
+                            projectCode: prev.projectCode === PROJECT_CODE_PREFIX ? '' : prev.projectCode,
                           };
-                        }
-
-                        return {
-                          ...prev,
-                          esContratoMarco: 'yes',
-                          projectCode: prev.projectCode === PROJECT_CODE_PREFIX ? '' : prev.projectCode,
-                        };
-                      });
-                    }}
-                    aria-pressed={formData.esContratoMarco === 'yes'}
-                    className="inline-flex items-center gap-2 text-xs text-[#616f89] whitespace-nowrap"
-                  >
-                    <span>Contrato Marco?</span>
-                    <span
-                      className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${
-                        formData.esContratoMarco === 'yes' ? 'bg-primary' : 'bg-gray-300'
-                      }`}
+                        });
+                      }}
+                      aria-label="Alternar contrato marco"
+                      aria-pressed={formData.esContratoMarco === 'yes'}
+                      className="rounded-full focus:outline-none focus:ring-2 focus:ring-primary/40"
                     >
                       <span
-                        className={`inline-block h-3 w-3 rounded-full bg-white transition-transform ${
-                          formData.esContratoMarco === 'yes' ? 'translate-x-3.5' : 'translate-x-0.5'
+                        className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${
+                          formData.esContratoMarco === 'yes' ? 'bg-primary' : 'bg-gray-300'
                         }`}
-                      />
-                    </span>
-                  </button>
+                      >
+                        <span
+                          className={`inline-block h-3 w-3 rounded-full bg-white transition-transform ${
+                            formData.esContratoMarco === 'yes' ? 'translate-x-3.5' : 'translate-x-0.5'
+                          }`}
+                        />
+                      </span>
+                    </button>
+                  </div>
                 </div>
                 <input 
                   type="text" 
@@ -1709,7 +1879,7 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
                     ? 'Campo libre para contrato marco.'
                     : 'Ejemplo: MY-001-2026'}
                 </span>
-              </label>
+              </div>
               <label className="flex flex-col gap-2">
                 <span className="text-[#111318] text-sm font-medium">
                   Requisito <span className="text-red-500">*</span>
@@ -1752,9 +1922,16 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
                 />
               </label>
               <label className="flex flex-col gap-2 lg:col-span-2">
-                <span className="text-[#111318] text-sm font-medium">
-                  Nombre de Solicitante <span className="text-red-500">*</span>
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[#111318] text-sm font-medium">
+                    Nombre de Solicitante <span className="text-red-500">*</span>
+                  </span>
+                  {isRequesterLocalSelection && (
+                    <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                      Registro local
+                    </span>
+                  )}
+                </div>
                 <div className="relative">
                   <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-[#616f89] text-base">search</span>
                   <input 
@@ -1768,6 +1945,18 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
                       setFormData(prev => ({ ...prev, requesterName: '' }));
                     }}
                     onFocus={() => setShowDropdownSolicitante(true)}
+                    onKeyDown={(event) => {
+                      if (
+                        event.key === 'Enter' &&
+                        solicitanteQueryTrimmed.length > 0 &&
+                        !hasExactSolicitanteMatch &&
+                        filteredPersonasSolicitante.length === 0 &&
+                        filteredLocalSolicitantes.length === 0
+                      ) {
+                        event.preventDefault();
+                        handleAddLocalSolicitante(solicitanteQueryTrimmed);
+                      }
+                    }}
                     placeholder="Buscar por nombre o RUT..."
                     autoComplete="off"
                     required
@@ -1790,30 +1979,63 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
                   {/* Dropdown de resultados */}
                   {showDropdownSolicitante && (
                     <div className="dropdown-results-solicitante absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto top-full">
-                      {filteredPersonasSolicitante.length > 0 ? (
-                        filteredPersonasSolicitante.map(persona => (
-                          <button
-                            key={persona.id}
-                            type="button"
-                            onClick={() => {
-                              setSelectedPersonaSolicitante(persona);
-                              setSearchQuerySolicitante(`${persona.nombre_completo} - ${persona.rut}`);
-                              setShowDropdownSolicitante(false);
-                              setFormData(prev => ({ ...prev, requesterName: persona.nombre_completo }));
-                            }}
-                            className={`w-full px-4 py-3 text-left hover:bg-gray-50 border-b border-gray-100 last:border-b-0 transition-colors ${
-                              selectedPersonaSolicitante?.id === persona.id ? 'bg-blue-50' : ''
-                            }`}
-                          >
-                            <div className="text-sm font-medium text-gray-900">{persona.nombre_completo}</div>
-                            <div className="text-xs text-gray-500">{persona.rut}</div>
-                          </button>
-                        ))
-                      ) : (
-                        <div className="px-4 py-3 text-sm text-gray-500 text-center">
-                          No se encontraron colaboradores
-                        </div>
+                      {filteredPersonasSolicitante.map(persona => (
+                        <button
+                          key={persona.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedPersonaSolicitante(persona);
+                            setSearchQuerySolicitante(`${persona.nombre_completo} - ${persona.rut}`);
+                            setShowDropdownSolicitante(false);
+                            setFormData(prev => ({ ...prev, requesterName: persona.nombre_completo }));
+                          }}
+                          className={`w-full px-4 py-3 text-left hover:bg-gray-50 border-b border-gray-100 transition-colors ${
+                            selectedPersonaSolicitante?.id === persona.id ? 'bg-blue-50' : ''
+                          }`}
+                        >
+                          <div className="text-sm font-medium text-gray-900">{persona.nombre_completo}</div>
+                          <div className="text-xs text-gray-500">{persona.rut}</div>
+                        </button>
+                      ))}
+
+                      {filteredLocalSolicitantes.map((nombreLocal) => (
+                        <button
+                          key={`local-${nombreLocal.toLowerCase()}`}
+                          type="button"
+                          onClick={() => handleAddLocalSolicitante(nombreLocal)}
+                          className="w-full px-4 py-3 text-left hover:bg-gray-50 border-b border-gray-100 transition-colors"
+                        >
+                          <div className="text-sm font-medium text-gray-900">
+                            {nombreLocal}
+                            <span className="ml-2 text-xs font-medium text-emerald-700">
+                              Registro local
+                            </span>
+                          </div>
+                        </button>
+                      ))}
+
+                      {solicitanteQueryTrimmed.length > 0 &&
+                        !hasExactSolicitanteMatch &&
+                        filteredPersonasSolicitante.length === 0 &&
+                        filteredLocalSolicitantes.length === 0 && (
+                        <button
+                          type="button"
+                          onClick={() => handleAddLocalSolicitante(solicitanteQueryTrimmed)}
+                          className="w-full px-4 py-3 text-left hover:bg-emerald-50 border-b border-gray-100 transition-colors"
+                        >
+                          <div className="text-sm font-medium text-emerald-700">
+                            {`Agregar a "${solicitanteQueryTrimmed}"`}
+                          </div>
+                        </button>
                       )}
+
+                      {filteredPersonasSolicitante.length === 0 &&
+                        filteredLocalSolicitantes.length === 0 &&
+                        (solicitanteQueryTrimmed.length === 0 || hasExactSolicitanteMatch) && (
+                          <div className="px-4 py-3 text-sm text-gray-500 text-center">
+                            No se encontraron colaboradores
+                          </div>
+                        )}
                     </div>
                   )}
                 </div>
@@ -1955,9 +2177,16 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
             </div>
             <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
               <label className="flex flex-col gap-2">
-                <span className="text-[#111318] text-sm font-medium">
-                  Jefe de Proyectos MYMA <span className="text-red-500">*</span>
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[#111318] text-sm font-medium">
+                    Jefe de Proyectos MYMA <span className="text-red-500">*</span>
+                  </span>
+                  {isProjectManagerLocalSelection && (
+                    <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                      Registro local
+                    </span>
+                  )}
+                </div>
                 <div className="relative">
                   <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-[#616f89] text-base">search</span>
                   <input
@@ -1971,6 +2200,18 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
                       setFormData(prev => ({ ...prev, projectManager: '' }));
                     }}
                     onFocus={() => setShowDropdownJefeProyecto(true)}
+                    onKeyDown={(event) => {
+                      if (
+                        event.key === 'Enter' &&
+                        jefeProyectoQueryTrimmed.length > 0 &&
+                        !hasExactJefeProyectoMatch &&
+                        filteredPersonasJefeProyecto.length === 0 &&
+                        filteredLocalJefesProyecto.length === 0
+                      ) {
+                        event.preventDefault();
+                        handleAddLocalJefeProyecto(jefeProyectoQueryTrimmed);
+                      }
+                    }}
                     placeholder="Buscar por nombre o RUT..."
                     autoComplete="off"
                     required
@@ -1992,38 +2233,78 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
                   )}
                   {showDropdownJefeProyecto && (
                     <div className="dropdown-results-jefe-proyecto absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto top-full">
-                      {filteredPersonasJefeProyecto.length > 0 ? (
-                        filteredPersonasJefeProyecto.map(persona => (
+                      {filteredPersonasJefeProyecto.map(persona => (
+                        <button
+                          key={persona.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedPersonaJefeProyecto(persona);
+                            setSearchQueryJefeProyecto(`${persona.nombre_completo} - ${persona.rut}`);
+                            setShowDropdownJefeProyecto(false);
+                            setFormData(prev => ({ ...prev, projectManager: persona.nombre_completo }));
+                          }}
+                          className={`w-full px-4 py-3 text-left hover:bg-gray-50 border-b border-gray-100 transition-colors ${
+                            selectedPersonaJefeProyecto?.id === persona.id ? 'bg-blue-50' : ''
+                          }`}
+                        >
+                          <div className="text-sm font-medium text-gray-900">{persona.nombre_completo}</div>
+                          <div className="text-xs text-gray-500">{persona.rut}</div>
+                        </button>
+                      ))}
+
+                      {filteredLocalJefesProyecto.map((nombreLocal) => (
+                        <button
+                          key={`local-jefe-${nombreLocal.toLowerCase()}`}
+                          type="button"
+                          onClick={() => handleAddLocalJefeProyecto(nombreLocal)}
+                          className="w-full px-4 py-3 text-left hover:bg-gray-50 border-b border-gray-100 transition-colors"
+                        >
+                          <div className="text-sm font-medium text-gray-900">
+                            {nombreLocal}
+                            <span className="ml-2 text-xs font-medium text-emerald-700">
+                              Registro local
+                            </span>
+                          </div>
+                        </button>
+                      ))}
+
+                      {jefeProyectoQueryTrimmed.length > 0 &&
+                        !hasExactJefeProyectoMatch &&
+                        filteredPersonasJefeProyecto.length === 0 &&
+                        filteredLocalJefesProyecto.length === 0 && (
                           <button
-                            key={persona.id}
                             type="button"
-                            onClick={() => {
-                              setSelectedPersonaJefeProyecto(persona);
-                              setSearchQueryJefeProyecto(`${persona.nombre_completo} - ${persona.rut}`);
-                              setShowDropdownJefeProyecto(false);
-                              setFormData(prev => ({ ...prev, projectManager: persona.nombre_completo }));
-                            }}
-                            className={`w-full px-4 py-3 text-left hover:bg-gray-50 border-b border-gray-100 last:border-b-0 transition-colors ${
-                              selectedPersonaJefeProyecto?.id === persona.id ? 'bg-blue-50' : ''
-                            }`}
+                            onClick={() => handleAddLocalJefeProyecto(jefeProyectoQueryTrimmed)}
+                            className="w-full px-4 py-3 text-left hover:bg-emerald-50 border-b border-gray-100 transition-colors"
                           >
-                            <div className="text-sm font-medium text-gray-900">{persona.nombre_completo}</div>
-                            <div className="text-xs text-gray-500">{persona.rut}</div>
+                            <div className="text-sm font-medium text-emerald-700">
+                              {`Agregar a "${jefeProyectoQueryTrimmed}"`}
+                            </div>
                           </button>
-                        ))
-                      ) : (
-                        <div className="px-4 py-3 text-sm text-gray-500 text-center">
-                          No se encontraron colaboradores
-                        </div>
-                      )}
+                        )}
+
+                      {filteredPersonasJefeProyecto.length === 0 &&
+                        filteredLocalJefesProyecto.length === 0 &&
+                        (jefeProyectoQueryTrimmed.length === 0 || hasExactJefeProyectoMatch) && (
+                          <div className="px-4 py-3 text-sm text-gray-500 text-center">
+                            No se encontraron colaboradores
+                          </div>
+                        )}
                     </div>
                   )}
                 </div>
               </label>
               <label className="flex flex-col gap-2">
-                <span className="text-[#111318] text-sm font-medium">
-                  Admin. de Contrato MYMA <span className="text-red-500">*</span>
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[#111318] text-sm font-medium">
+                    Admin. de Contrato MYMA <span className="text-red-500">*</span>
+                  </span>
+                  {isContractAdminLocalSelection && (
+                    <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                      Registro local
+                    </span>
+                  )}
+                </div>
                 <div className="relative">
                   <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-[#616f89] text-base">search</span>
                   <input
@@ -2037,6 +2318,18 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
                       setFormData(prev => ({ ...prev, contractAdmin: '' }));
                     }}
                     onFocus={() => setShowDropdownAdminContrato(true)}
+                    onKeyDown={(event) => {
+                      if (
+                        event.key === 'Enter' &&
+                        adminContratoQueryTrimmed.length > 0 &&
+                        !hasExactAdminContratoMatch &&
+                        filteredPersonasAdminContrato.length === 0 &&
+                        filteredLocalAdminsContrato.length === 0
+                      ) {
+                        event.preventDefault();
+                        handleAddLocalAdminContrato(adminContratoQueryTrimmed);
+                      }
+                    }}
                     placeholder="Buscar por nombre o RUT..."
                     autoComplete="off"
                     required
@@ -2058,30 +2351,63 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
                   )}
                   {showDropdownAdminContrato && (
                     <div className="dropdown-results-admin-contrato absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto top-full">
-                      {filteredPersonasAdminContrato.length > 0 ? (
-                        filteredPersonasAdminContrato.map(persona => (
+                      {filteredPersonasAdminContrato.map(persona => (
+                        <button
+                          key={persona.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedPersonaAdminContrato(persona);
+                            setSearchQueryAdminContrato(`${persona.nombre_completo} - ${persona.rut}`);
+                            setShowDropdownAdminContrato(false);
+                            setFormData(prev => ({ ...prev, contractAdmin: persona.nombre_completo }));
+                          }}
+                          className={`w-full px-4 py-3 text-left hover:bg-gray-50 border-b border-gray-100 transition-colors ${
+                            selectedPersonaAdminContrato?.id === persona.id ? 'bg-blue-50' : ''
+                          }`}
+                        >
+                          <div className="text-sm font-medium text-gray-900">{persona.nombre_completo}</div>
+                          <div className="text-xs text-gray-500">{persona.rut}</div>
+                        </button>
+                      ))}
+
+                      {filteredLocalAdminsContrato.map((nombreLocal) => (
+                        <button
+                          key={`local-admin-${nombreLocal.toLowerCase()}`}
+                          type="button"
+                          onClick={() => handleAddLocalAdminContrato(nombreLocal)}
+                          className="w-full px-4 py-3 text-left hover:bg-gray-50 border-b border-gray-100 transition-colors"
+                        >
+                          <div className="text-sm font-medium text-gray-900">
+                            {nombreLocal}
+                            <span className="ml-2 text-xs font-medium text-emerald-700">
+                              Registro local
+                            </span>
+                          </div>
+                        </button>
+                      ))}
+
+                      {adminContratoQueryTrimmed.length > 0 &&
+                        !hasExactAdminContratoMatch &&
+                        filteredPersonasAdminContrato.length === 0 &&
+                        filteredLocalAdminsContrato.length === 0 && (
                           <button
-                            key={persona.id}
                             type="button"
-                            onClick={() => {
-                              setSelectedPersonaAdminContrato(persona);
-                              setSearchQueryAdminContrato(`${persona.nombre_completo} - ${persona.rut}`);
-                              setShowDropdownAdminContrato(false);
-                              setFormData(prev => ({ ...prev, contractAdmin: persona.nombre_completo }));
-                            }}
-                            className={`w-full px-4 py-3 text-left hover:bg-gray-50 border-b border-gray-100 last:border-b-0 transition-colors ${
-                              selectedPersonaAdminContrato?.id === persona.id ? 'bg-blue-50' : ''
-                            }`}
+                            onClick={() => handleAddLocalAdminContrato(adminContratoQueryTrimmed)}
+                            className="w-full px-4 py-3 text-left hover:bg-emerald-50 border-b border-gray-100 transition-colors"
                           >
-                            <div className="text-sm font-medium text-gray-900">{persona.nombre_completo}</div>
-                            <div className="text-xs text-gray-500">{persona.rut}</div>
+                            <div className="text-sm font-medium text-emerald-700">
+                              {`Agregar a "${adminContratoQueryTrimmed}"`}
+                            </div>
                           </button>
-                        ))
-                      ) : (
-                        <div className="px-4 py-3 text-sm text-gray-500 text-center">
-                          No se encontraron colaboradores
-                        </div>
-                      )}
+                        )}
+
+                      {filteredPersonasAdminContrato.length === 0 &&
+                        filteredLocalAdminsContrato.length === 0 &&
+                        (adminContratoQueryTrimmed.length === 0 || hasExactAdminContratoMatch) && (
+                          <div className="px-4 py-3 text-sm text-gray-500 text-center">
+                            No se encontraron colaboradores
+                          </div>
+                        )}
                     </div>
                   )}
                 </div>
@@ -2396,9 +2722,9 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
                   className="form-select w-full rounded-lg border border-[#dbdfe6] bg-white px-3 py-2.5 text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none"
                 >
                   <option value="">Seleccione...</option>
-                  {proveedores.map((proveedor, index) => (
-                    <option key={index} value={proveedor}>
-                      {proveedor}
+                  {proveedores.map((proveedor) => (
+                    <option key={proveedor.id} value={proveedor.nombre_proveedor}>
+                      {proveedor.nombre_proveedor}
                     </option>
                   ))}
                 </select>
@@ -2543,9 +2869,9 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
                       className="form-select w-full rounded-lg border border-[#dbdfe6] bg-white px-3 py-2.5 text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none"
                     >
                       <option value="">Seleccione...</option>
-                      {proveedores.map((proveedor, index) => (
-                        <option key={index} value={proveedor}>
-                          {proveedor}
+                      {proveedores.map((proveedor) => (
+                        <option key={proveedor.id} value={proveedor.nombre_proveedor}>
+                          {proveedor.nombre_proveedor}
                         </option>
                       ))}
                     </select>
@@ -2559,8 +2885,18 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
                 onRemoveWorker={handleRemoveWorkerContratista}
                 readOnly={isViewMode}
                 requireCompanySelection={true}
-                companies={proveedores.length > 0 ? proveedores : MOCK_COMPANIES.map(c => c.name)}
+                companies={
+                  proveedores.length > 0
+                    ? proveedores.map((proveedor) => proveedor.nombre_proveedor)
+                    : MOCK_COMPANIES.map((company) => company.name)
+                }
                 selectedCompany={formData.razonSocialContratista}
+                selectedCompanyRut={
+                  proveedores.find(
+                    (proveedor) =>
+                      proveedor.nombre_proveedor === formData.razonSocialContratista
+                  )?.rut || ''
+                }
                 targetWorkerCount={targetWorkerCountContratista}
                 onTargetWorkerCountChange={isViewMode ? undefined : setTargetWorkerCountContratista}
               />
@@ -2777,6 +3113,7 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
 };
 
 export default FieldRequestForm;
+
 
 
 

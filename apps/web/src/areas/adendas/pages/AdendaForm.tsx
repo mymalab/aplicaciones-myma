@@ -7,27 +7,68 @@ import { fetchAdendaById, createAdenda, updateAdenda } from '../services/adendas
 import { adendasList } from '../utils/routes';
 
 const ADENDAS_PROXY_BASE = '/api/acreditacion/adendas';
+const ADENDAS_LOCAL_BASE = (
+  import.meta.env.VITE_ADENDAS_LOCAL_API_BASE_URL || 'http://localhost:8000/v1'
+)
+  .trim()
+  .replace(/\/+$/, '');
+const ADENDAS_LOCAL_API_KEY = (
+  import.meta.env.VITE_ADENDAS_LOCAL_API_KEY ||
+  import.meta.env.VITE_ICSARA_API_KEY ||
+  ''
+).trim();
+
+interface AdendasApiConfig {
+  baseUrl: string;
+  headers?: Record<string, string>;
+  strictHealthCheck?: boolean;
+}
+
+const ADENDAS_REMOTE_CONFIG: AdendasApiConfig = {
+  baseUrl: ADENDAS_PROXY_BASE,
+  strictHealthCheck: false,
+};
+
+const ADENDAS_LOCAL_CONFIG: AdendasApiConfig = {
+  baseUrl: ADENDAS_LOCAL_BASE,
+  strictHealthCheck: true,
+  headers: ADENDAS_LOCAL_API_KEY ? { 'X-API-Key': ADENDAS_LOCAL_API_KEY } : undefined,
+};
+
+const buildAdendasUrl = (baseUrl: string, path: string) => `${baseUrl}${path}`;
+const getResponseContentType = (response: Response) =>
+  response.headers.get('content-type')?.toLowerCase() ?? '';
 
 /**
  * Verifica si el servidor de la API está disponible usando el endpoint de health check
  * Retorna un objeto con el estado y un mensaje de error si falla
  */
-export async function verificarConexionApi(): Promise<{ disponible: boolean; error?: string }> {
+export async function verificarConexionApi(
+  apiConfig: AdendasApiConfig = ADENDAS_REMOTE_CONFIG
+): Promise<{ disponible: boolean; error?: string }> {
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000); // Timeout de 5 segundos
 
-    const healthUrl = `${ADENDAS_PROXY_BASE}/health/live`;
+    const healthUrl = buildAdendasUrl(apiConfig.baseUrl, '/health/live');
     console.log(`Verificando conexión con: ${healthUrl}`);
 
     const res = await fetch(healthUrl, {
       method: "GET",
       signal: controller.signal,
+      headers: apiConfig.headers,
     });
 
     clearTimeout(timeoutId);
     
     console.log(`Respuesta del health check: ${res.status} ${res.statusText}`);
+
+    if (apiConfig.strictHealthCheck && !res.ok) {
+      return {
+        disponible: false,
+        error: `Health check falló con código ${res.status}: ${res.statusText}`,
+      };
+    }
     
     // Si obtenemos una respuesta (incluso si no es 200), el servidor está disponible
     if (res.ok || res.status < 500) {
@@ -46,7 +87,7 @@ export async function verificarConexionApi(): Promise<{ disponible: boolean; err
       if (error.message === 'Failed to fetch') {
         return { 
           disponible: false, 
-          error: 'No se pudo conectar con el servidor proxy de adendas. Posibles causas: servidor no está corriendo o la ruta es incorrecta.' 
+          error: `No se pudo conectar con el servidor en ${apiConfig.baseUrl}. Posibles causas: servidor no está corriendo o la ruta es incorrecta.` 
         };
       }
       return { 
@@ -72,9 +113,13 @@ export async function verificarConexionApi(): Promise<{ disponible: boolean; err
   }
 }
 
-export async function subirPdfAApi(pdfFile: File, idAdenda: number) {
+export async function subirPdfAApi(
+  pdfFile: File,
+  idAdenda: number,
+  apiConfig: AdendasApiConfig = ADENDAS_REMOTE_CONFIG
+) {
   try {
-    const uploadUrl = `${ADENDAS_PROXY_BASE}/jobs`;
+    const uploadUrl = buildAdendasUrl(apiConfig.baseUrl, '/jobs');
     console.log(`Intentando subir PDF a: ${uploadUrl}`);
     console.log(`Tamaño del archivo: ${(pdfFile.size / 1024 / 1024).toFixed(2)} MB`);
     
@@ -86,6 +131,7 @@ export async function subirPdfAApi(pdfFile: File, idAdenda: number) {
 
     const res = await fetch(uploadUrl, {
       method: "POST",
+      headers: apiConfig.headers,
       body: formData,
     });
 
@@ -96,7 +142,15 @@ export async function subirPdfAApi(pdfFile: File, idAdenda: number) {
       console.error(`Error del servidor: ${errorText}`);
       throw new Error(`Error al subir PDF: ${res.status} ${res.statusText} - ${errorText}`);
     }
-    
+
+    const contentType = getResponseContentType(res);
+    if (!contentType.includes('application/json')) {
+      const rawBody = await res.text();
+      throw new Error(
+        `La API respondió sin JSON válido (${contentType || 'sin content-type'}). ${rawBody}`
+      );
+    }
+
     const responseData = await res.json();
     console.log('Respuesta exitosa:', responseData);
     return responseData;
@@ -105,10 +159,10 @@ export async function subirPdfAApi(pdfFile: File, idAdenda: number) {
     
     if (error instanceof TypeError && error.message === 'Failed to fetch') {
       throw new Error(
-        `No se pudo conectar con el servidor en ${ADENDAS_PROXY_BASE}/jobs. ` +
+        `No se pudo conectar con el servidor en ${apiConfig.baseUrl}/jobs. ` +
         `Posibles causas:\n` +
         `- El servidor no está corriendo\n` +
-        `- La ruta del proxy no está disponible\n\n` +
+        `- La ruta no está disponible\n\n` +
         `Verifica la consola del navegador (F12) para más detalles.`
       );
     }
@@ -116,22 +170,45 @@ export async function subirPdfAApi(pdfFile: File, idAdenda: number) {
   }
 }
 
-export async function esperarResultado(jobId: string) {
+export async function esperarResultado(
+  jobId: string,
+  apiConfig: AdendasApiConfig = ADENDAS_REMOTE_CONFIG
+) {
   while (true) {
     try {
-      const res = await fetch(`${ADENDAS_PROXY_BASE}/jobs/${jobId}`);
+      const res = await fetch(buildAdendasUrl(apiConfig.baseUrl, `/jobs/${jobId}`), {
+        headers: apiConfig.headers,
+      });
 
       if (!res.ok) {
         throw new Error(`Error al consultar el estado del job: ${res.status} ${res.statusText}`);
       }
 
+      const contentType = getResponseContentType(res);
+      if (!contentType.includes('application/json')) {
+        const rawBody = await res.text();
+        throw new Error(
+          `Estado del job sin JSON válido (${contentType || 'sin content-type'}). ${rawBody}`
+        );
+      }
+
       const s = await res.json();
 
       if (s.status === "done") {
-        const resultRes = await fetch(`${ADENDAS_PROXY_BASE}/jobs/${jobId}/result`);
+        const resultRes = await fetch(buildAdendasUrl(apiConfig.baseUrl, `/jobs/${jobId}/result`), {
+          headers: apiConfig.headers,
+        });
 
         if (!resultRes.ok) {
           throw new Error(`Error al obtener el resultado: ${resultRes.status} ${resultRes.statusText}`);
+        }
+
+        const resultContentType = getResponseContentType(resultRes);
+        if (!resultContentType.includes('application/json')) {
+          const rawBody = await resultRes.text();
+          throw new Error(
+            `Resultado sin JSON válido (${resultContentType || 'sin content-type'}). ${rawBody}`
+          );
         }
 
         return resultRes.json();
@@ -144,7 +221,7 @@ export async function esperarResultado(jobId: string) {
       await new Promise(r => setTimeout(r, 2000));
     } catch (error) {
       if (error instanceof TypeError && error.message === 'Failed to fetch') {
-        throw new Error(`No se pudo conectar con el servidor. Verifica que el proxy de adendas esté disponible.`);
+        throw new Error(`No se pudo conectar con el servidor. Verifica que ${apiConfig.baseUrl} esté disponible.`);
       }
       throw error;
     }
@@ -154,18 +231,30 @@ export async function esperarResultado(jobId: string) {
 /**
  * Obtiene las preguntas clasificadas del resultado del job
  */
-export async function obtenerPreguntasClasificadas(jobId: string) {
+export async function obtenerPreguntasClasificadas(
+  jobId: string,
+  apiConfig: AdendasApiConfig = ADENDAS_REMOTE_CONFIG
+) {
   try {
-    const url = `${ADENDAS_PROXY_BASE}/jobs/${jobId}/preguntas_clasificadas`;
+    const url = buildAdendasUrl(apiConfig.baseUrl, `/jobs/${jobId}/preguntas_clasificadas`);
     console.log(`Obteniendo preguntas clasificadas de: ${url}`);
 
     const res = await fetch(url, {
       method: "GET",
+      headers: apiConfig.headers,
     });
 
     if (!res.ok) {
       const errorText = await res.text();
       throw new Error(`Error al obtener preguntas clasificadas: ${res.status} ${res.statusText} - ${errorText}`);
+    }
+
+    const contentType = getResponseContentType(res);
+    if (!contentType.includes('application/json')) {
+      const rawBody = await res.text();
+      throw new Error(
+        `Preguntas clasificadas sin JSON válido (${contentType || 'sin content-type'}). ${rawBody}`
+      );
     }
 
     const preguntasClasificadas = await res.json();
@@ -174,7 +263,7 @@ export async function obtenerPreguntasClasificadas(jobId: string) {
   } catch (error) {
     console.error('Error al obtener preguntas clasificadas:', error);
     if (error instanceof TypeError && error.message === 'Failed to fetch') {
-      throw new Error(`No se pudo conectar con el servidor. Verifica que el proxy de adendas esté disponible.`);
+      throw new Error(`No se pudo conectar con el servidor. Verifica que ${apiConfig.baseUrl} esté disponible.`);
     }
     throw error;
   }
@@ -184,6 +273,8 @@ interface AdendaFormProps {
   onBack?: () => void;
   onSave?: () => void;
 }
+
+type SubmitTarget = 'remote' | 'local' | null;
 
 const AdendaForm: React.FC<AdendaFormProps> = ({ onBack, onSave }) => {
   const navigate = useNavigate();
@@ -201,6 +292,7 @@ const AdendaForm: React.FC<AdendaFormProps> = ({ onBack, onSave }) => {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [procesandoPdf, setProcesandoPdf] = useState(false);
+  const [submitTarget, setSubmitTarget] = useState<SubmitTarget>(null);
   const [error, setError] = useState<string | null>(null);
   const [preguntasClasificadas, setPreguntasClasificadas] = useState<any>(null);
   const [mostrarPopup, setMostrarPopup] = useState(false);
@@ -281,13 +373,16 @@ const AdendaForm: React.FC<AdendaFormProps> = ({ onBack, onSave }) => {
     finalizarGuardado();
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
+  const procesarGuardado = async (
+    apiConfig: AdendasApiConfig,
+    target: Exclude<SubmitTarget, null>
+  ) => {
     if (!tipo) {
       setError('Debe seleccionar un tipo de adenda');
       return;
     }
+
+    setSubmitTarget(target);
 
     try {
       setSaving(true);
@@ -300,10 +395,13 @@ const AdendaForm: React.FC<AdendaFormProps> = ({ onBack, onSave }) => {
           
           // Verificar conexión con el servidor antes de intentar subir
           console.log('Verificando conexión con el servidor...');
-          const conexion = await verificarConexionApi();
+          const conexion = await verificarConexionApi(apiConfig);
           
           if (!conexion.disponible) {
             console.warn('Advertencia de conexión:', conexion.error);
+            if (apiConfig.strictHealthCheck) {
+              throw new Error(conexion.error || 'Health check falló para la API local.');
+            }
             // Mostramos un warning pero continuamos, ya que el error real se mostrará al intentar subir
             // Esto ayuda a diagnosticar problemas de CORS que pueden afectar el health check pero no el POST
             const mensajeWarning = conexion.error || 
@@ -316,7 +414,7 @@ const AdendaForm: React.FC<AdendaFormProps> = ({ onBack, onSave }) => {
           
           const adendaGuardada = await guardarAdenda(false);
           console.log('Subiendo PDF a la API...');
-          const jobResponse = await subirPdfAApi(archivo, adendaGuardada.id);
+          const jobResponse = await subirPdfAApi(archivo, adendaGuardada.id, apiConfig);
           console.log('PDF subido exitosamente, respuesta:', jobResponse);
           
           // Obtener el jobId del response (puede ser jobResponse.id, jobResponse.job_id, etc.)
@@ -329,12 +427,12 @@ const AdendaForm: React.FC<AdendaFormProps> = ({ onBack, onSave }) => {
 
           // Esperar el resultado del procesamiento
           console.log('Esperando resultado del procesamiento, jobId:', jobId);
-          const resultado = await esperarResultado(jobId);
+          const resultado = await esperarResultado(jobId, apiConfig);
           console.log('Resultado del procesamiento:', resultado);
           
           // Obtener las preguntas clasificadas
           console.log('Obteniendo preguntas clasificadas...');
-          const preguntas = await obtenerPreguntasClasificadas(jobId);
+          const preguntas = await obtenerPreguntasClasificadas(jobId, apiConfig);
           console.log('Preguntas clasificadas:', preguntas);
           
           // Guardar las preguntas clasificadas y mostrar el popup
@@ -361,12 +459,26 @@ const AdendaForm: React.FC<AdendaFormProps> = ({ onBack, onSave }) => {
       // (esto solo ocurre si no hay archivo PDF)
       await guardarAdenda();
     } catch (error) {
-      console.error('Error en handleSubmit:', error);
+      console.error('Error en procesarGuardado:', error);
       setError('Error al procesar la solicitud. Por favor, intente nuevamente.');
       setSaving(false);
       setProcesandoPdf(false);
+    } finally {
+      setSubmitTarget(null);
     }
   };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await procesarGuardado(ADENDAS_REMOTE_CONFIG, 'remote');
+  };
+
+  const handleGuardarEnLocal = async () => {
+    await procesarGuardado(ADENDAS_LOCAL_CONFIG, 'local');
+  };
+
+  const isRemoteSubmitting = submitTarget === 'remote' && (saving || procesandoPdf);
+  const isLocalSubmitting = submitTarget === 'local' && (saving || procesandoPdf);
 
   const handleBack = () => {
     if (onBack) {
@@ -620,14 +732,35 @@ const AdendaForm: React.FC<AdendaFormProps> = ({ onBack, onSave }) => {
               Cancelar
             </button>
             <button
+              type="button"
+              onClick={handleGuardarEnLocal}
+              disabled={saving || procesandoPdf || !tipo}
+              className="px-4 py-2 bg-[#059669] text-white rounded-lg hover:bg-[#047857] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            >
+              {isLocalSubmitting && (
+                <span className="material-symbols-outlined animate-spin">sync</span>
+              )}
+              {isLocalSubmitting
+                ? procesandoPdf
+                  ? 'Procesando PDF...'
+                  : 'Guardando...'
+                : 'Guardar en local'}
+            </button>
+            <button
               type="submit"
               disabled={saving || procesandoPdf || !tipo}
               className="px-4 py-2 bg-[#059669] text-white rounded-lg hover:bg-[#047857] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             >
-              {(procesandoPdf || saving) && (
+              {isRemoteSubmitting && (
                 <span className="material-symbols-outlined animate-spin">sync</span>
               )}
-              {procesandoPdf ? 'Procesando PDF...' : saving ? 'Guardando...' : isEditing ? 'Actualizar' : 'Crear'}
+              {isRemoteSubmitting
+                ? procesandoPdf
+                  ? 'Procesando PDF...'
+                  : 'Guardando...'
+                : isEditing
+                  ? 'Actualizar'
+                  : 'Crear'}
             </button>
           </div>
         </form>

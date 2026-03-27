@@ -23,6 +23,21 @@ BEGIN
     FROM information_schema.columns
     WHERE table_schema = 'public'
       AND table_name = 'preguntas'
+      AND column_name = 'fecha_compromiso'
+  ) THEN
+    ALTER TABLE public.preguntas
+      ADD COLUMN fecha_compromiso date NULL;
+  END IF;
+END;
+$$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'preguntas'
       AND column_name = 'estrategia'
   ) THEN
     ALTER TABLE public.preguntas
@@ -116,4 +131,7 @@ COMMENT ON COLUMN public.preguntas.estrategia
 
 COMMENT ON COLUMN public.preguntas.respuesta_ia
   IS 'Borrador o respuesta asistida por IA para la observación.';
+
+COMMENT ON COLUMN public.preguntas.fecha_compromiso
+  IS 'Fecha objetivo para completar la respuesta de la observación.';
 

@@ -16,6 +16,8 @@ import {
   RequestFormData,
   Worker,
   WorkerType,
+  ProveedorAcreditacion,
+  TrabajadorExterno,
   SOLICITUD_ACREDITACION_STATUS,
   SolicitudAcreditacionStatus,
 } from '../types';
@@ -33,6 +35,64 @@ const normalizeStatusText = (status: string | null | undefined): string =>
 
 const isNormalizedLegacyFinalizadoStatus = (normalizedStatus: string): boolean =>
   LEGACY_FINALIZADO_ALIASES.has(normalizedStatus);
+
+export interface UpsertTrabajadorExternoInput {
+  nombre_completo: string;
+  rut: string;
+  telefono?: string | null;
+  empresa_razon_social: string;
+  empresa_rut: string;
+  correo?: string | null;
+}
+
+export const normalizeRut = (value: string | null | undefined): string =>
+  (value || '')
+    .replace(/[^0-9kK]/g, '')
+    .toUpperCase();
+
+const toCanonicalRut = (value: string | null | undefined): string => {
+  const normalized = normalizeRut(value);
+  if (normalized.length < 2) return '';
+
+  const body = normalized.slice(0, -1);
+  const dv = normalized.slice(-1);
+  return `${body}-${dv}`;
+};
+
+export const formatRut = (value: string | null | undefined): string => {
+  const normalized = normalizeRut(value);
+  if (normalized.length < 2) return normalized;
+
+  const body = normalized.slice(0, -1);
+  const dv = normalized.slice(-1);
+  const bodyWithDots = body.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+
+  return `${bodyWithDots}-${dv}`;
+};
+
+const buildRutVariants = (value: string | null | undefined): string[] => {
+  const normalized = normalizeRut(value);
+  if (normalized.length < 2) return [];
+
+  const body = normalized.slice(0, -1);
+  const dv = normalized.slice(-1);
+  const dvUpper = dv.toUpperCase();
+  const dvLower = dv.toLowerCase();
+  const bodyWithDots = body.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+
+  return Array.from(
+    new Set([
+      `${body}-${dvUpper}`,
+      `${body}-${dvLower}`,
+      `${bodyWithDots}-${dvUpper}`,
+      `${bodyWithDots}-${dvLower}`,
+      `${body}${dvUpper}`,
+      `${body}${dvLower}`,
+      `${bodyWithDots}${dvUpper}`,
+      `${bodyWithDots}${dvLower}`,
+    ])
+  );
+};
 
 export const canonicalizeSolicitudStatus = (
   status: string | null | undefined
@@ -542,18 +602,32 @@ export const fetchCatalogoRequerimientos = async (): Promise<any[]> => {
 };
 
 // Función para obtener todos los proveedores
-export const fetchProveedores = async (): Promise<{ id: number; nombre_proveedor: string }[]> => {
+export const fetchProveedores = async (): Promise<ProveedorAcreditacion[]> => {
   const { data, error } = await supabase
+    .from('dim_core_proveedor')
+    .select('id, nombre_proveedor, rut')
+    .order('nombre_proveedor', { ascending: true });
+
+  if (!error) {
+    return data || [];
+  }
+
+  // Fallback: en algunos entornos el campo rut puede no estar disponible por permisos/esquema.
+  console.warn('Error fetching proveedores con RUT; reintentando sin columna rut:', error);
+  const { data: fallbackData, error: fallbackError } = await supabase
     .from('dim_core_proveedor')
     .select('id, nombre_proveedor')
     .order('nombre_proveedor', { ascending: true });
-  
-  if (error) {
-    console.error('Error fetching proveedores:', error);
-    throw error;
+
+  if (fallbackError) {
+    console.error('Error fetching proveedores (fallback sin rut):', fallbackError);
+    throw fallbackError;
   }
-  
-  return data || [];
+
+  return (fallbackData || []).map((proveedor: { id: number; nombre_proveedor: string }) => ({
+    ...proveedor,
+    rut: null,
+  }));
 };
 
 // Función para obtener brg_acreditacion_persona_requerimiento_sst con cálculo de estado
@@ -1660,17 +1734,38 @@ export const createProyectoRequerimientos = async (
   },
   idProyecto?: number
 ): Promise<any[]> => {
-  console.log('═══════════════════════════════════════════════════');
-  console.log('🚀 INICIO: createProyectoRequerimientos');
-  console.log('═══════════════════════════════════════════════════');
-  console.log('📝 Código Proyecto:', codigoProyecto);
-  console.log('🏢 Cliente:', cliente);
-  console.log('📋 Empresa Requerimientos recibidos:', empresaRequerimientos?.length || 0);
-  console.log('👥 Responsables:', JSON.stringify(responsables, null, 2));
+  const isDebugLogging = import.meta.env.DEV;
+  const isVerboseDebugLogging =
+    isDebugLogging && import.meta.env.VITE_ACREDITACION_VERBOSE_LOGS === 'true';
+  const console = isVerboseDebugLogging
+    ? globalThis.console
+    : {
+        log: () => {},
+        warn: () => {},
+        error: () => {}
+      };
+
+  const debugSummaryLog = (...args: any[]) => {
+    if (isDebugLogging) {
+      globalThis.console.log(...args);
+    }
+  };
+
+  debugSummaryLog('[createProyectoRequerimientos] Inicio', {
+    codigoProyecto,
+    cliente,
+    requerimientosRecibidos: empresaRequerimientos?.length || 0,
+    responsablesAsignados: {
+      jpro: Boolean(responsables.jpro_nombre),
+      epr: Boolean(responsables.epr_nombre),
+      rrhh: Boolean(responsables.rrhh_nombre),
+      legal: Boolean(responsables.legal_nombre)
+    },
+    verboseDebug: isVerboseDebugLogging
+  });
   
   if (!empresaRequerimientos || empresaRequerimientos.length === 0) {
-    console.error('❌ NO HAY REQUERIMIENTOS PARA GUARDAR');
-    console.log('═══════════════════════════════════════════════════\n');
+    debugSummaryLog('[createProyectoRequerimientos] Sin requerimientos seleccionados');
     return [];
   }
   
@@ -1682,16 +1777,15 @@ export const createProyectoRequerimientos = async (
     .eq('codigo_proyecto', codigoProyecto);
   
   if (checkError) {
-    console.error('❌ Error al verificar requerimientos existentes:', checkError);
+    globalThis.console.error('❌ Error al verificar requerimientos existentes:', checkError);
   }
   
-  console.log(`📊 Requerimientos existentes: ${existingReqs?.length || 0}`);
+  debugSummaryLog('[createProyectoRequerimientos] Requerimientos existentes', {
+    total: existingReqs?.length || 0
+  });
   
   if (existingReqs && existingReqs.length > 0) {
-    console.log('⚠️ Ya existen requerimientos para este proyecto:');
-    existingReqs.forEach((req: any, i) => {
-      console.log(`  ${i + 1}. ${req.requerimiento} (${req.categoria_requerimiento})`);
-    });
+    debugSummaryLog('[createProyectoRequerimientos] Proyecto con requerimientos previos, se evaluará actualización/creación incremental');
     
     // Si hay responsables asignados, actualizar los requerimientos existentes
     const tieneResponsables = responsables.jpro_nombre || responsables.epr_nombre || responsables.rrhh_nombre || responsables.legal_nombre;
@@ -1734,7 +1828,7 @@ export const createProyectoRequerimientos = async (
             .eq('id', req.id);
           
           if (updateError) {
-            console.error(`❌ Error actualizando requerimiento ${req.id}:`, updateError);
+            globalThis.console.error(`❌ Error actualizando requerimiento ${req.id}:`, updateError);
           } else {
             console.log(`✅ Requerimiento ${req.id} actualizado con responsable: ${nombreResponsable}`);
           }
@@ -1776,7 +1870,7 @@ export const createProyectoRequerimientos = async (
       .single();
 
     if (solicitudError) {
-      console.error('❌ Error obteniendo solicitud:', solicitudError);
+      globalThis.console.error('❌ Error obteniendo solicitud:', solicitudError);
       console.log('═══════════════════════════════════════════════════\n');
       throw new Error(`No se encontró el proyecto ${codigoProyecto}`);
     }
@@ -1801,12 +1895,12 @@ export const createProyectoRequerimientos = async (
     }
   }
   
-  console.log(`✅ ID Proyecto encontrado: ${proyectoId}`);
-  console.log(`📋 Requiere acreditar empresa: ${requiereAcreditarEmpresa}`);
-  console.log(`📋 Requiere acreditar contratista: ${requiereAcreditarContratista}`);
-  if (razonSocialContratista) {
-    console.log(`📋 Razón social contratista: ${razonSocialContratista}`);
-  }
+  debugSummaryLog('[createProyectoRequerimientos] Datos de solicitud', {
+    idProyecto: proyectoId,
+    requiereAcreditarEmpresa,
+    requiereAcreditarContratista,
+    razonSocialContratista: razonSocialContratista || null
+  });
 
   // Obtener los trabajadores de fct_acreditacion_solicitud_trabajador_manual
   console.log('\n🔍 Buscando trabajadores en fct_acreditacion_solicitud_trabajador_manual...');
@@ -1819,7 +1913,7 @@ export const createProyectoRequerimientos = async (
       .eq('id_proyecto', proyectoId);
 
     if (trabajadoresError) {
-      console.error('❌ Error obteniendo trabajadores:', trabajadoresError);
+      globalThis.console.error('❌ Error obteniendo trabajadores:', trabajadoresError);
     } else {
       trabajadoresProyecto = trabajadores || [];
       console.log(`✅ Trabajadores encontrados: ${trabajadoresProyecto.length}`);
@@ -1844,7 +1938,7 @@ export const createProyectoRequerimientos = async (
       .eq('id_proyecto', proyectoId);
 
     if (conductoresError) {
-      console.error('❌ Error obteniendo conductores:', conductoresError);
+      globalThis.console.error('❌ Error obteniendo conductores:', conductoresError);
     } else {
       conductoresProyecto = conductores || [];
       console.log(`✅ Conductores encontrados: ${conductoresProyecto.length}`);
@@ -1869,7 +1963,7 @@ export const createProyectoRequerimientos = async (
       .eq('id_proyecto', proyectoId);
 
     if (vehiculosError) {
-      console.error('❌ Error obteniendo vehiculos:', vehiculosError);
+      globalThis.console.error('❌ Error obteniendo vehiculos:', vehiculosError);
     } else {
       vehiculosProyecto = vehiculos || [];
       console.log(`✅ Vehiculos encontrados: ${vehiculosProyecto.length}`);
@@ -1882,6 +1976,12 @@ export const createProyectoRequerimientos = async (
   } else {
     console.warn('⚠️ No se pudo obtener el ID del proyecto');
   }
+
+  debugSummaryLog('[createProyectoRequerimientos] Entidades para construir registros', {
+    trabajadores: trabajadoresProyecto.length,
+    conductores: conductoresProyecto.length,
+    vehiculos: vehiculosProyecto.length
+  });
 
   // Mapear cada requerimiento de empresa a uno o más requerimientos de proyecto
   console.log('\n🔧 Construyendo requerimientos...');
@@ -2095,73 +2195,81 @@ export const createProyectoRequerimientos = async (
     }
   });
 
-  console.log(`\n📦 TOTAL DE REGISTROS A INSERTAR: ${proyectoRequerimientos.length}`);
-  
-  if (proyectoRequerimientos.length === 0) {
-    console.error('❌ NO SE CONSTRUYERON REQUERIMIENTOS');
-    console.error('🔍 Posibles causas:');
-    console.error('   1. No hay requerimientos en empresaRequerimientos');
-    console.error('   2. La categoría no coincide con ninguna condición');
-    console.error('   3. Los flags requiere_acreditar_empresa y requiere_acreditar_contratista están en FALSE para categoría Empresa');
-    console.log('═══════════════════════════════════════════════════\n');
-    throw new Error('No se pudieron construir requerimientos para guardar. Verifica los logs anteriores.');
-  }
-  
-  // Logs detallados de TODOS los registros antes de insertar
-  console.log('\n📋 DETALLE COMPLETO DE TODOS LOS REGISTROS A INSERTAR:');
-  proyectoRequerimientos.forEach((r, i) => {
-    console.log(`\n  📝 Registro ${i + 1}/${proyectoRequerimientos.length}:`);
-    console.log(`    codigo_proyecto: "${r.codigo_proyecto}"`);
-    console.log(`    requerimiento: "${r.requerimiento}"`);
-    console.log(`    id_proyecto_trabajador: ${r.id_proyecto_trabajador ?? 'NULL'} (COALESCE → ${r.id_proyecto_trabajador ?? -1})`);
-    console.log(`    empresa_acreditacion: "${r.empresa_acreditacion ?? 'NULL'}" (COALESCE → "${r.empresa_acreditacion ?? ''}")`);
-    console.log(`    categoria_requerimiento: "${r.categoria_requerimiento}"`);
-    console.log(`    responsable: "${r.responsable}"`);
-    console.log(`    nombre_trabajador: "${r.nombre_trabajador || 'NULL'}"`);
-    console.log(`    ────────────────────────────────────────────────`);
-    console.log(`    🔑 CLAVE ÚNICA (constraint):`);
-    console.log(`       (codigo_proyecto="${r.codigo_proyecto}", requerimiento="${r.requerimiento}", id_trabajador=${r.id_proyecto_trabajador ?? -1}, empresa="${r.empresa_acreditacion ?? ''}")`);
+  const resumenPorCategoria = proyectoRequerimientos.reduce<Record<string, number>>((acc, registro) => {
+    const key = registro.categoria_requerimiento || 'Sin categoria';
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+
+  const resumenPorEmpresaAcreditacion = proyectoRequerimientos.reduce<Record<string, number>>((acc, registro) => {
+    const key = registro.empresa_acreditacion || 'Sin empresa_acreditacion';
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+
+  debugSummaryLog('[createProyectoRequerimientos] Resumen de construccion', {
+    requerimientosRecibidos: empresaRequerimientos.length,
+    registrosConstruidos: proyectoRequerimientos.length,
+    porCategoria: resumenPorCategoria,
+    porEmpresaAcreditacion: resumenPorEmpresaAcreditacion
   });
 
-  // Verificar si hay registros duplicados en la base de datos ANTES de insertar
-  console.log('\n🔍 VERIFICANDO REGISTROS EXISTENTES EN BD...');
-  const valoresUnicos = proyectoRequerimientos.map(r => ({
-    codigo_proyecto: r.codigo_proyecto,
-    requerimiento: r.requerimiento,
-    id_proyecto_trabajador: r.id_proyecto_trabajador ?? -1,
-    empresa_acreditacion: r.empresa_acreditacion ?? ''
-  }));
-  
-  console.log(`   Buscando ${valoresUnicos.length} combinaciones únicas...`);
-  
-  // Verificar cada combinación única
-  for (const valorUnico of valoresUnicos) {
-    const { data: existentes, error: checkError } = await supabase
-      .from('brg_acreditacion_solicitud_requerimiento')
-      .select('id, codigo_proyecto, requerimiento, id_proyecto_trabajador, empresa_acreditacion')
-      .eq('codigo_proyecto', valorUnico.codigo_proyecto)
-      .eq('requerimiento', valorUnico.requerimiento)
-      .eq('id_proyecto_trabajador', valorUnico.id_proyecto_trabajador === -1 ? null : valorUnico.id_proyecto_trabajador)
-      .eq('empresa_acreditacion', valorUnico.empresa_acreditacion || null);
-    
-    if (checkError) {
-      console.error(`   ⚠️ Error verificando:`, checkError);
-    } else if (existentes && existentes.length > 0) {
-      console.error(`   ❌ CONFLICTO DETECTADO:`);
-      console.error(`      codigo_proyecto: "${valorUnico.codigo_proyecto}"`);
-      console.error(`      requerimiento: "${valorUnico.requerimiento}"`);
-      console.error(`      id_proyecto_trabajador: ${valorUnico.id_proyecto_trabajador}`);
-      console.error(`      empresa_acreditacion: "${valorUnico.empresa_acreditacion}"`);
-      console.error(`      Registros existentes en BD:`, existentes);
+  if (proyectoRequerimientos.length === 0) {
+    throw new Error('No se pudieron construir requerimientos para guardar. Verifica los datos de entrada.');
+  }
+
+  // La verificacion detallada de conflictos es solo para debug.
+  if (isDebugLogging) {
+    const valoresUnicos = proyectoRequerimientos.map(r => ({
+      codigo_proyecto: r.codigo_proyecto,
+      requerimiento: r.requerimiento,
+      id_proyecto_trabajador: r.id_proyecto_trabajador ?? -1,
+      empresa_acreditacion: r.empresa_acreditacion ?? ''
+    }));
+
+    debugSummaryLog('[createProyectoRequerimientos] Verificacion de duplicados (debug)', {
+      combinacionesUnicas: valoresUnicos.length
+    });
+
+    for (const valorUnico of valoresUnicos) {
+      let duplicateCheckQuery = supabase
+        .from('brg_acreditacion_solicitud_requerimiento')
+        .select('id, codigo_proyecto, requerimiento, id_proyecto_trabajador, empresa_acreditacion')
+        .eq('codigo_proyecto', valorUnico.codigo_proyecto)
+        .eq('requerimiento', valorUnico.requerimiento);
+
+      if (valorUnico.id_proyecto_trabajador === -1) {
+        duplicateCheckQuery = duplicateCheckQuery.is('id_proyecto_trabajador', null);
+      } else {
+        duplicateCheckQuery = duplicateCheckQuery.eq('id_proyecto_trabajador', valorUnico.id_proyecto_trabajador);
+      }
+
+      if (valorUnico.empresa_acreditacion) {
+        duplicateCheckQuery = duplicateCheckQuery.eq('empresa_acreditacion', valorUnico.empresa_acreditacion);
+      } else {
+        duplicateCheckQuery = duplicateCheckQuery.is('empresa_acreditacion', null);
+      }
+
+      const { data: existentes, error: checkError } = await duplicateCheckQuery;
+
+      if (checkError) {
+        console.warn('[createProyectoRequerimientos] Error en verificacion de duplicados (debug):', checkError);
+      } else if (existentes && existentes.length > 0) {
+        console.warn('[createProyectoRequerimientos] Conflicto detectado (debug):', {
+          codigo_proyecto: valorUnico.codigo_proyecto,
+          requerimiento: valorUnico.requerimiento,
+          id_proyecto_trabajador: valorUnico.id_proyecto_trabajador,
+          empresa_acreditacion: valorUnico.empresa_acreditacion,
+          coincidencias: existentes.length
+        });
+      }
     }
   }
 
-  // Insertar todos los requerimientos
-  console.log('\n💾 INSERTANDO EN BASE DE DATOS...');
-  console.log(`Tabla: brg_acreditacion_solicitud_requerimiento`);
-  console.log(`Registros a insertar: ${proyectoRequerimientos.length}`);
-  console.log(`\n📦 Datos completos a insertar (JSON):`);
-  console.log(JSON.stringify(proyectoRequerimientos, null, 2));
+  debugSummaryLog('[createProyectoRequerimientos] Insertando registros', {
+    tabla: 'brg_acreditacion_solicitud_requerimiento',
+    cantidad: proyectoRequerimientos.length
+  });
   
   const { data, error } = await supabase
     .from('brg_acreditacion_solicitud_requerimiento')
@@ -2169,6 +2277,13 @@ export const createProyectoRequerimientos = async (
     .select();
   
   if (error) {
+    globalThis.console.error('[createProyectoRequerimientos] Error en insert:', {
+      message: error.message,
+      code: error.code,
+      details: error.details,
+      hint: error.hint
+    });
+
     console.error('═══════════════════════════════════════════════════');
     console.error('❌ ERROR EN INSERT');
     console.error('═══════════════════════════════════════════════════');
@@ -2200,24 +2315,158 @@ export const createProyectoRequerimientos = async (
       throw new Error('Error de constraint UNIQUE. Revisa la consola para ver los detalles. Ejecuta el script sql/actualizar_constraint_con_empresa_acreditacion.sql en Supabase SQL Editor si aún no lo has hecho.');
     }
     
-    console.log('═══════════════════════════════════════════════════\n');
     throw error;
   }
-  
-  console.log('═══════════════════════════════════════════════════');
-  console.log('✅ INSERT EXITOSO');
-  console.log('═══════════════════════════════════════════════════');
-  console.log(`Registros insertados: ${data?.length || 0}`);
-  
-  if (data && data.length > 0) {
-    console.log('\nPrimeros 3 registros insertados:');
-    data.slice(0, 3).forEach((r: any, i) => {
-      console.log(`  ${i + 1}. ID: ${r.id} - ${r.requerimiento} (${r.categoria_requerimiento})`);
-    });
-  }
-  
-  console.log('═══════════════════════════════════════════════════\n');
+
+  debugSummaryLog('[createProyectoRequerimientos] Insert exitoso', {
+    registrosInsertados: data?.length || 0,
+    registrosConstruidos: proyectoRequerimientos.length
+  });
+
   return data || [];
+};
+
+export const fetchTrabajadoresExternosByEmpresaRut = async (
+  empresaRut: string,
+  empresaRazonSocial?: string
+): Promise<TrabajadorExterno[]> => {
+  const rutVariants = buildRutVariants(empresaRut);
+  const companyName = (empresaRazonSocial || '').trim();
+  const rows: TrabajadorExterno[] = [];
+
+  if (rutVariants.length > 0) {
+    const { data, error } = await supabase
+      .from('dim_trabajador_externo')
+      .select('id, rut, correo, telefono, empresa_razon_social, empresa_rut, created_at, updated_at, nombre_completo')
+      .in('empresa_rut', rutVariants)
+      .order('nombre_completo', { ascending: true });
+
+    if (error) {
+      console.error('Error fetching dim_trabajador_externo by empresa_rut:', error);
+      throw error;
+    }
+
+    rows.push(...((data || []) as TrabajadorExterno[]));
+  }
+
+  if (rows.length === 0 && companyName) {
+    const { data, error } = await supabase
+      .from('dim_trabajador_externo')
+      .select('id, rut, correo, telefono, empresa_razon_social, empresa_rut, created_at, updated_at, nombre_completo')
+      .eq('empresa_razon_social', companyName)
+      .order('nombre_completo', { ascending: true });
+
+    if (error) {
+      console.error('Error fetching dim_trabajador_externo by empresa_razon_social (eq):', error);
+      throw error;
+    }
+
+    rows.push(...((data || []) as TrabajadorExterno[]));
+  }
+
+  if (rows.length === 0 && companyName) {
+    const { data, error } = await supabase
+      .from('dim_trabajador_externo')
+      .select('id, rut, correo, telefono, empresa_razon_social, empresa_rut, created_at, updated_at, nombre_completo')
+      .ilike('empresa_razon_social', `%${companyName}%`)
+      .order('nombre_completo', { ascending: true });
+
+    if (error) {
+      console.error('Error fetching dim_trabajador_externo by empresa_razon_social (ilike):', error);
+      throw error;
+    }
+
+    rows.push(...((data || []) as TrabajadorExterno[]));
+  }
+
+  const dedupedByRut = new Map<string, TrabajadorExterno>();
+  rows.forEach((row) => {
+    const key = normalizeRut(row.rut) || `id-${row.id}`;
+    if (!dedupedByRut.has(key)) {
+      dedupedByRut.set(key, row);
+    }
+  });
+
+  return Array.from(dedupedByRut.values()).map((row) => ({
+    ...row,
+    rut: formatRut(row.rut),
+  }));
+};
+
+export const fetchTrabajadorExternoByRut = async (
+  rut: string
+): Promise<TrabajadorExterno | null> => {
+  const rutVariants = buildRutVariants(rut);
+
+  if (rutVariants.length === 0) {
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from('dim_trabajador_externo')
+    .select('id, rut, correo, telefono, empresa_razon_social, empresa_rut, created_at, updated_at, nombre_completo')
+    .in('rut', rutVariants)
+    .order('updated_at', { ascending: false })
+    .limit(1);
+
+  if (error) {
+    console.error('Error fetching dim_trabajador_externo by rut:', error);
+    throw error;
+  }
+
+  const found = data?.[0] as TrabajadorExterno | undefined;
+  if (!found) {
+    return null;
+  }
+
+  return {
+    ...found,
+    rut: formatRut(found.rut),
+  };
+};
+
+export const upsertTrabajadoresExternos = async (
+  trabajadores: UpsertTrabajadorExternoInput[]
+): Promise<void> => {
+  if (!trabajadores || trabajadores.length === 0) {
+    return;
+  }
+
+  const dedupedByRut = new Map<string, UpsertTrabajadorExternoInput>();
+
+  trabajadores.forEach((trabajador) => {
+    const canonicalRut = toCanonicalRut(trabajador.rut);
+    const empresaRazonSocial = (trabajador.empresa_razon_social || '').trim();
+    const empresaRut = (trabajador.empresa_rut || '').trim();
+    const nombreCompleto = (trabajador.nombre_completo || '').trim();
+
+    if (!canonicalRut || !empresaRazonSocial || !empresaRut || !nombreCompleto) {
+      return;
+    }
+
+    dedupedByRut.set(canonicalRut, {
+      nombre_completo: nombreCompleto,
+      rut: canonicalRut,
+      telefono: (trabajador.telefono || '').trim() || null,
+      empresa_razon_social: empresaRazonSocial,
+      empresa_rut: empresaRut,
+      correo: (trabajador.correo || '').trim() || null,
+    });
+  });
+
+  const payload = Array.from(dedupedByRut.values());
+  if (payload.length === 0) {
+    return;
+  }
+
+  const { error } = await supabase
+    .from('dim_trabajador_externo')
+    .upsert(payload, { onConflict: 'rut' });
+
+  if (error) {
+    console.error('Error upserting dim_trabajador_externo:', error);
+    throw error;
+  }
 };
 
 // Función para obtener requerimientos de un proyecto

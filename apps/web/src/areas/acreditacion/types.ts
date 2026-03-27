@@ -133,6 +133,7 @@ export interface ProyectoTrabajador {
   categoria_empresa: 'MyMA' | 'Contratista';
   rut?: string;
   telefono?: string;
+  persona_id?: number | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -204,8 +205,28 @@ export interface Worker {
   phone?: string;
   company?: string;
   rut?: string;
-   // ID de la persona en dim_core_persona (solo para trabajadores internos seleccionados desde BD)
-   personaId?: number;
+  // ID de la persona en dim_core_persona (solo para trabajadores internos seleccionados desde BD)
+  personaId?: number;
+  // Si es true, al guardar la solicitud se sincroniza en dim_trabajador_externo
+  syncExternalOnSave?: boolean;
+}
+
+export interface ProveedorAcreditacion {
+  id: number;
+  nombre_proveedor: string;
+  rut?: string | null;
+}
+
+export interface TrabajadorExterno {
+  id: number;
+  rut: string;
+  correo?: string | null;
+  telefono?: string | null;
+  empresa_razon_social?: string | null;
+  empresa_rut?: string | null;
+  nombre_completo: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface RequestFormData {

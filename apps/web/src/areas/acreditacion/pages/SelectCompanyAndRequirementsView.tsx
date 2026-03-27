@@ -115,6 +115,13 @@ const SelectCompanyAndRequirementsView: React.FC<SelectCompanyAndRequirementsVie
   const searchInputRef = useRef<HTMLDivElement>(null);
   const hasLoadedEmpresaRef = useRef(false);
   const categoryAvailabilityPromiseRef = useRef<Promise<SolicitudRequerimientoCategoryAvailability | null> | null>(null);
+  const isDebugLogging = import.meta.env.DEV;
+
+  const debugLog = (...args: any[]) => {
+    if (isDebugLogging) {
+      globalThis.console.log(...args);
+    }
+  };
 
   // Cerrar el dropdown cuando se hace click fuera
   useEffect(() => {
@@ -482,18 +489,13 @@ const SelectCompanyAndRequirementsView: React.FC<SelectCompanyAndRequirementsVie
       // Sin responsables asignados todavía (se asignarán después)
       if (empresaRequerimientos.length > 0) {
         try {
-          console.log('═══════════════════════════════════════════════════');
-          console.log('📋 INICIANDO GUARDADO DE REQUERIMIENTOS');
-          console.log('═══════════════════════════════════════════════════');
-          console.log(`   Total requerimientos seleccionados: ${empresaRequerimientos.length}`);
-          console.log(`   Código proyecto: ${project.projectCode}`);
-          console.log(`   ID proyecto: ${project.id}`);
-          console.log(`   Empresa seleccionada: ${selectedEmpresaNombre} (ID: ${selectedEmpresaId})`);
-          console.log('\n   Requerimientos seleccionados:');
-          empresaRequerimientos.forEach((req, i) => {
-            console.log(`     ${i + 1}. ${req.requerimiento} (${req.categoria_requerimiento}) - Responsable: ${req.responsable}`);
+          debugLog('[SelectCompanyAndRequirementsView] Iniciando guardado de requerimientos', {
+            codigoProyecto: project.projectCode,
+            idProyecto: project.id,
+            empresaId: selectedEmpresaId,
+            empresaNombre: selectedEmpresaNombre,
+            totalSeleccionados: empresaRequerimientos.length
           });
-          console.log('═══════════════════════════════════════════════════\n');
           
           const registrosInsertados = await createProyectoRequerimientos(
             project.projectCode,
@@ -507,12 +509,13 @@ const SelectCompanyAndRequirementsView: React.FC<SelectCompanyAndRequirementsVie
             },
             project.id // Pasar el id de fct_acreditacion_solicitud como id_proyecto
           );
-          console.log('✅ Requerimientos guardados exitosamente');
+          debugLog('[SelectCompanyAndRequirementsView] Requerimientos guardados', {
+            registrosInsertados: registrosInsertados?.length || 0
+          });
 
           // Llamar a la API para asignar folder
           if (registrosInsertados && registrosInsertados.length > 0) {
             try {
-              console.log('📡 Llamando a API /asignar-folder...');
               const payload = {
                 codigo_proyecto: project.projectCode,
                 id_proyecto: project.id,
@@ -536,8 +539,11 @@ const SelectCompanyAndRequirementsView: React.FC<SelectCompanyAndRequirementsVie
                   return registroPayload;
                 }),
               };
-
-              console.log('📦 Payload para API:', JSON.stringify(payload, null, 2));
+              debugLog('[SelectCompanyAndRequirementsView] Sincronizando /asignar-folder', {
+                codigoProyecto: payload.codigo_proyecto,
+                idProyecto: payload.id_proyecto,
+                totalRegistros: payload.registros.length
+              });
 
               const response = await fetch(ACREDITACION_PROXY_ENDPOINTS.asignarFolder, {
                 method: 'POST',
@@ -553,9 +559,12 @@ const SelectCompanyAndRequirementsView: React.FC<SelectCompanyAndRequirementsVie
               }
 
               const result = await response.json();
-              console.log('✅ API /asignar-folder respondió exitosamente:', result);
+              debugLog('[SelectCompanyAndRequirementsView] /asignar-folder OK', {
+                status: response.status,
+                resultado: result
+              });
             } catch (apiError: any) {
-              console.error('❌ Error al llamar a la API /asignar-folder:', apiError);
+              globalThis.console.error('Error al llamar a la API /asignar-folder:', apiError);
               setWarning(
                 'Se guardaron los requerimientos, pero falló la sincronización de carpetas/asignación. Reintentar desde soporte o revisar logs.'
               );
@@ -565,13 +574,7 @@ const SelectCompanyAndRequirementsView: React.FC<SelectCompanyAndRequirementsVie
             }
           }
         } catch (error: any) {
-          console.error('═══════════════════════════════════════════════════');
-          console.error('❌ ERROR AL GUARDAR REQUERIMIENTOS');
-          console.error('═══════════════════════════════════════════════════');
-          console.error('Error completo:', error);
-          console.error('Mensaje:', error?.message);
-          console.error('Stack:', error?.stack);
-          console.error('═══════════════════════════════════════════════════\n');
+          globalThis.console.error('Error al guardar requerimientos:', error);
           const errorMessage = error?.message || 'Error desconocido al guardar requerimientos';
           setError(`Error al guardar requerimientos: ${errorMessage}`);
           setTimeout(() => setError(null), 8000);
@@ -590,7 +593,7 @@ const SelectCompanyAndRequirementsView: React.FC<SelectCompanyAndRequirementsVie
       }
       onBack();
     } catch (error: any) {
-      console.error('Error guardando:', error);
+      globalThis.console.error('Error guardando empresa y requerimientos:', error);
       const errorMessage = error?.message || 'Error al guardar. Por favor intenta nuevamente.';
       setError(errorMessage);
       
