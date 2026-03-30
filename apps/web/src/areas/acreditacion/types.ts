@@ -351,6 +351,7 @@ export interface SolicitudAcreditacion {
   solicitud_prueba?: boolean;
   estado?: string;
   estado_solicitud_acreditacion?: SolicitudAcreditacionStatus | string; // Estado específico de la solicitud
+  estado_carpeta_arranque?: string | null;
   // Responsables del proyecto
   empresa_id?: string; // ID de la Empresa Contratista
   empresa_nombre?: string; // Nombre de la Empresa Contratista
@@ -383,6 +384,7 @@ export interface ProjectGalleryItem {
   totalWorkers: number;
   totalVehicles: number;
   status: SolicitudAcreditacionStatus | string;
+  estadoCarpetaArranque?: string;
   workers: Worker[];
   createdAt: string;
   fechaFinalizacion?: string | null;
@@ -452,3 +454,4 @@ export const MOCK_EXTERNAL_WORKERS_BY_COMPANY: Record<string, {name: string, pho
     { name: 'Valentina Suelos', phone: '+56 9 7777 0001' }
   ]
 };
+

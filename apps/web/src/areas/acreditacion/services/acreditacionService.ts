@@ -1377,6 +1377,7 @@ export const fetchProjectGalleryItems = async (): Promise<ProjectGalleryItem[]> 
           solicitud.estado ||
           SOLICITUD_ACREDITACION_STATUS.POR_ASIGNAR_REQUERIMIENTOS
       ),
+      estadoCarpetaArranque: solicitud.estado_carpeta_arranque || undefined,
       workers: allWorkers,
       createdAt: solicitud.created_at,
       fechaFinalizacion: solicitud.fecha_finalizacion || null,

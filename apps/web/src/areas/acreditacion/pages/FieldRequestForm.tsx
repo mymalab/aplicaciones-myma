@@ -709,9 +709,10 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
 
       if (name === 'requirement') {
         const isCarpetaArranqueOnly = value === 'Carpeta de arranque';
+        const hasCarpetaArranque = isCarpetaArranqueOnly || value === 'Acreditación y Carpeta de arranque';
         if (isCarpetaArranqueOnly) {
           nextFormData.fieldStartDate = '';
-        } else {
+        } else if (!hasCarpetaArranque) {
           nextFormData.fechaEntregaCarpetaArranque = '';
         }
       }
@@ -890,6 +891,7 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
       }
 
       const isCarpetaArranqueOnly = formData.requirement === 'Carpeta de arranque';
+      const hasCarpetaArranque = isCarpetaArranqueOnly || formData.requirement === 'Acreditación y Carpeta de arranque';
 
       if (!effectiveOmitirCamposObligatorios) {
       if (formData.esContratoMarco === 'yes' && !formData.projectCode.trim()) {
@@ -1034,7 +1036,8 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
         jefe_proyectos_myma: formData.projectManager || null,
         fecha_inicio_terreno: isCarpetaArranqueOnly ? null : formData.fieldStartDate || null,
         fecha_entrega_carpeta_arranque:
-          isCarpetaArranqueOnly ? formData.fechaEntregaCarpetaArranque || null : null,
+          hasCarpetaArranque ? formData.fechaEntregaCarpetaArranque || null : null,
+        estado_carpeta_arranque: hasCarpetaArranque ? 'Pendiente Carpeta de arranque' : null,
         aviso_prevencion_riesgo: formData.riskPreventionNotice === 'yes', // Convertir a boolean
         requiere_acreditar_empresa: requiereAcreditarEmpresa, // Convertir a boolean
         admin_contrato_myma: formData.contractAdmin || null,
@@ -1447,6 +1450,8 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
     const nombreResponsable = randomItem(nombres);
     const requirementSelection = randomItem(requisitos);
     const isCarpetaArranqueOnly = requirementSelection === 'Carpeta de arranque';
+    const hasCarpetaArranque =
+      isCarpetaArranqueOnly || requirementSelection === 'Acreditación y Carpeta de arranque';
 
     // Rellenar formData
       setFormData({
@@ -1462,7 +1467,7 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
       projectManager: personas.length > 0 ? randomItem(personas).nombre_completo : randomItem(nombres),
       accreditationFollowUp: '',
       fieldStartDate: isCarpetaArranqueOnly ? '' : randomDate(randomInt(7, 30)),
-      fechaEntregaCarpetaArranque: isCarpetaArranqueOnly ? randomDate(randomInt(7, 30)) : '',
+      fechaEntregaCarpetaArranque: hasCarpetaArranque ? randomDate(randomInt(7, 30)) : '',
       riskPreventionNotice: 'yes',
       companyAccreditationRequired: 'yes',
       requiereAcreditarTrabajadoresMyma: 'yes',
@@ -1713,6 +1718,8 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
       (nombre) => nombre.toLowerCase() === formData.contractAdmin.trim().toLowerCase()
     );
   const isCarpetaArranqueOnly = formData.requirement === 'Carpeta de arranque';
+  const hasCarpetaArranque =
+    isCarpetaArranqueOnly || formData.requirement === 'Acreditación y Carpeta de arranque';
   const hasRequiredDateForRequirement = isCarpetaArranqueOnly
     ? formData.fechaEntregaCarpetaArranque.trim() !== ''
     : formData.fieldStartDate.trim() !== '';
@@ -2106,7 +2113,7 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
                     value={formData.fechaEntregaCarpetaArranque}
                     onChange={handleInputChange}
                     required={isCarpetaArranqueOnly}
-                    disabled={!isCarpetaArranqueOnly}
+                    disabled={!hasCarpetaArranque}
                     className="form-input w-full rounded-lg border border-[#dbdfe6] bg-white px-3 py-2.5 text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none pl-10 disabled:bg-[#f3f4f6] disabled:text-[#9ca3af] disabled:cursor-not-allowed"
                   />
                 </div>
@@ -3168,8 +3175,6 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
 };
 
 export default FieldRequestForm;
-
-
 
 
 

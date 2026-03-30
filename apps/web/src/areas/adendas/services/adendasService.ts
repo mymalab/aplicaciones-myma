@@ -1,6 +1,64 @@
 import { supabase } from '@shared/api-client/supabase';
 import { Adenda, NewAdendaPayload, AdendaListItem } from '../types';
 
+type AdendaMutationPayload = {
+  tipo: NewAdendaPayload['tipo'];
+  codigo_myma?: string;
+  nombre?: string;
+  descripcion?: string;
+  fecha_entrega?: string;
+  estado?: string;
+  url_proyecto?: string;
+};
+
+let supportsUrlProyectoColumn: boolean | null = null;
+
+const isMissingUrlProyectoColumnError = (error: unknown): boolean => {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+
+  const supabaseError = error as { code?: string; message?: string };
+  return (
+    supabaseError.code === 'PGRST204' &&
+    typeof supabaseError.message === 'string' &&
+    supabaseError.message.includes("'url_proyecto'")
+  );
+};
+
+const buildMutationPayload = (
+  payload: NewAdendaPayload,
+  includeUrlProyecto: boolean
+): AdendaMutationPayload => {
+  const mutationPayload: AdendaMutationPayload = {
+    tipo: payload.tipo,
+    codigo_myma: payload.codigo_myma,
+    nombre: payload.nombre,
+    descripcion: payload.descripcion,
+    fecha_entrega: payload.fecha_entrega,
+    estado: payload.estado,
+  };
+
+  if (includeUrlProyecto && payload.url_proyecto) {
+    mutationPayload.url_proyecto = payload.url_proyecto;
+  }
+
+  return mutationPayload;
+};
+
+const mapAdenda = (data: any): Adenda => ({
+  id: data.id,
+  tipo: data.tipo,
+  codigo_myma: data.codigo_myma,
+  nombre: data.nombre,
+  url_proyecto: data.url_proyecto,
+  descripcion: data.descripcion,
+  fecha_entrega: data.fecha_entrega,
+  fecha_creacion: data.fecha_creacion || data.created_at,
+  fecha_actualizacion: data.fecha_actualizacion || data.updated_at,
+  estado: data.estado,
+});
+
 /**
  * Datos dummy para desarrollo
  */
@@ -71,6 +129,7 @@ export const fetchAdendas = async (): Promise<AdendaListItem[]> => {
         tipo: item.tipo,
         codigo_myma: item.codigo_myma,
         nombre: item.nombre,
+        url_proyecto: item.url_proyecto,
         estado: item.estado,
         fecha_entrega: item.fecha_entrega,
         fecha_creacion: item.fecha_creacion || item.created_at,
@@ -96,18 +155,6 @@ export const fetchAdendaByCodigoMyma = async (codigoMyma: string): Promise<Adend
   if (!codigo) {
     return null;
   }
-
-  const mapAdenda = (data: any): Adenda => ({
-    id: data.id,
-    tipo: data.tipo,
-    codigo_myma: data.codigo_myma,
-    nombre: data.nombre,
-    descripcion: data.descripcion,
-    fecha_entrega: data.fecha_entrega,
-    fecha_creacion: data.fecha_creacion || data.created_at,
-    fecha_actualizacion: data.fecha_actualizacion || data.updated_at,
-    estado: data.estado,
-  });
 
   try {
     const { data, error } = await supabase
@@ -162,17 +209,7 @@ export const fetchAdendaById = async (id: number): Promise<Adenda | null> => {
 
     if (!data) return null;
 
-    return {
-      id: data.id,
-      tipo: data.tipo,
-      codigo_myma: data.codigo_myma,
-      nombre: data.nombre,
-      descripcion: data.descripcion,
-      fecha_entrega: data.fecha_entrega,
-      fecha_creacion: data.fecha_creacion || data.created_at,
-      fecha_actualizacion: data.fecha_actualizacion || data.updated_at,
-      estado: data.estado,
-    };
+    return mapAdenda(data);
   } catch (error) {
     console.error('Error in fetchAdendaById:', error);
     return null;
@@ -184,37 +221,35 @@ export const fetchAdendaById = async (id: number): Promise<Adenda | null> => {
  */
 export const createAdenda = async (payload: NewAdendaPayload): Promise<Adenda> => {
   try {
-    const { data, error } = await supabase
+    const shouldTryWithUrlProyecto = supportsUrlProyectoColumn !== false;
+
+    let { data, error } = await supabase
       .from('adendas')
-      .insert([
-        {
-          tipo: payload.tipo,
-          codigo_myma: payload.codigo_myma,
-          nombre: payload.nombre,
-          descripcion: payload.descripcion,
-          fecha_entrega: payload.fecha_entrega,
-          estado: payload.estado,
-        },
-      ])
+      .insert([buildMutationPayload(payload, shouldTryWithUrlProyecto)])
       .select()
       .single();
+
+    if (error && shouldTryWithUrlProyecto && isMissingUrlProyectoColumnError(error)) {
+      supportsUrlProyectoColumn = false;
+      console.warn(
+        "La columna 'url_proyecto' no existe en Supabase. Reintentando guardado de adenda sin esa columna."
+      );
+
+      ({ data, error } = await supabase
+        .from('adendas')
+        .insert([buildMutationPayload(payload, false)])
+        .select()
+        .single());
+    } else if (!error && shouldTryWithUrlProyecto) {
+      supportsUrlProyectoColumn = true;
+    }
 
     if (error) {
       console.error('Error creating adenda:', error);
       throw error;
     }
 
-    return {
-      id: data.id,
-      tipo: data.tipo,
-      codigo_myma: data.codigo_myma,
-      nombre: data.nombre,
-      descripcion: data.descripcion,
-      fecha_entrega: data.fecha_entrega,
-      fecha_creacion: data.fecha_creacion || data.created_at,
-      fecha_actualizacion: data.fecha_actualizacion || data.updated_at,
-      estado: data.estado,
-    };
+    return mapAdenda(data);
   } catch (error) {
     console.error('Error in createAdenda:', error);
     throw error;
@@ -229,36 +264,37 @@ export const updateAdenda = async (
   payload: NewAdendaPayload
 ): Promise<Adenda> => {
   try {
-    const { data, error } = await supabase
+    const shouldTryWithUrlProyecto = supportsUrlProyectoColumn !== false;
+
+    let { data, error } = await supabase
       .from('adendas')
-      .update({
-        tipo: payload.tipo,
-        codigo_myma: payload.codigo_myma,
-        nombre: payload.nombre,
-        descripcion: payload.descripcion,
-        fecha_entrega: payload.fecha_entrega,
-        estado: payload.estado,
-      })
+      .update(buildMutationPayload(payload, shouldTryWithUrlProyecto))
       .eq('id', id)
       .select()
       .single();
+
+    if (error && shouldTryWithUrlProyecto && isMissingUrlProyectoColumnError(error)) {
+      supportsUrlProyectoColumn = false;
+      console.warn(
+        "La columna 'url_proyecto' no existe en Supabase. Reintentando actualización de adenda sin esa columna."
+      );
+
+      ({ data, error } = await supabase
+        .from('adendas')
+        .update(buildMutationPayload(payload, false))
+        .eq('id', id)
+        .select()
+        .single());
+    } else if (!error && shouldTryWithUrlProyecto) {
+      supportsUrlProyectoColumn = true;
+    }
 
     if (error) {
       console.error('Error updating adenda:', error);
       throw error;
     }
 
-    return {
-      id: data.id,
-      tipo: data.tipo,
-      codigo_myma: data.codigo_myma,
-      nombre: data.nombre,
-      descripcion: data.descripcion,
-      fecha_entrega: data.fecha_entrega,
-      fecha_creacion: data.fecha_creacion || data.created_at,
-      fecha_actualizacion: data.fecha_actualizacion || data.updated_at,
-      estado: data.estado,
-    };
+    return mapAdenda(data);
   } catch (error) {
     console.error('Error in updateAdenda:', error);
     throw error;
@@ -281,4 +317,3 @@ export const deleteAdenda = async (id: number): Promise<void> => {
     throw error;
   }
 };
-

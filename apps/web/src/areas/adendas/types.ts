@@ -9,6 +9,7 @@ export interface Adenda {
   tipo: TipoAdenda;
   codigo_myma?: string;
   nombre?: string;
+  url_proyecto?: string;
   descripcion?: string;
   fecha_entrega?: string;
   fecha_creacion?: string;
@@ -20,6 +21,7 @@ export interface NewAdendaPayload {
   tipo: TipoAdenda;
   codigo_myma?: string;
   nombre?: string;
+  url_proyecto?: string;
   descripcion?: string;
   fecha_entrega?: string;
   estado?: string;
@@ -30,6 +32,7 @@ export interface AdendaListItem {
   tipo: TipoAdenda;
   codigo_myma?: string;
   nombre?: string;
+  url_proyecto?: string;
   estado?: string;
   fecha_entrega?: string;
   fecha_creacion?: string;

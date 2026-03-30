@@ -15,6 +15,7 @@ import {
   fetchSolicitudAcreditacionByCodigo,
   getNextManualSolicitudStatus,
   sendWebhookViaEdgeFunction,
+  updateSolicitudAcreditacion,
   updateRequerimientoEstado,
   enviarIdProyectoN8n,
 } from '../services/acreditacionService';
@@ -59,6 +60,10 @@ const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
     String(canonicalizeSolicitudStatus(project.status))
   );
   const [advancingProjectStatus, setAdvancingProjectStatus] = useState(false);
+  const [estadoCarpetaArranque, setEstadoCarpetaArranque] = useState<string>(
+    project.estadoCarpetaArranque?.trim() || ''
+  );
+  const [updatingEstadoCarpetaArranque, setUpdatingEstadoCarpetaArranque] = useState(false);
 
   const isReadOnlyCollaborator = accessLevel === 'editor' || accessLevel === 'viewer';
 
@@ -81,6 +86,7 @@ const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
   const canOpenDriveDocument = true;
   const canSendProjectDetail = accessLevel !== 'none';
   const canManuallyAdvanceProjectStatus = accessLevel === 'admin' || accessLevel === 'accreditor';
+  const canManageCarpetaArranqueStatus = accessLevel === 'admin' || accessLevel === 'accreditor';
   
   // Estado para controlar qué dropdown de columna está abierto
   const [openFilterDropdown, setOpenFilterDropdown] = useState<string | null>(null);
@@ -166,6 +172,10 @@ const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
   useEffect(() => {
     setProjectStatus(String(canonicalizeSolicitudStatus(project.status)));
   }, [project.status]);
+
+  useEffect(() => {
+    setEstadoCarpetaArranque(project.estadoCarpetaArranque?.trim() || '');
+  }, [project.estadoCarpetaArranque]);
 
   const areRequirementsEquivalent = (
     currentReq: ProjectRequirement,
@@ -453,6 +463,46 @@ const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
       );
     } finally {
       setAdvancingProjectStatus(false);
+    }
+  };
+
+  const handleFinalizarCarpetaArranque = async () => {
+    if (!canManageCarpetaArranqueStatus) return;
+    if (!estadoCarpetaArranque.trim()) return;
+    if (updatingEstadoCarpetaArranque) return;
+
+    const estadoFinal = 'Carpeta de arranque finalizada';
+    const isAlreadyFinalized =
+      estadoCarpetaArranque.trim().toLowerCase() === estadoFinal.toLowerCase();
+
+    if (isAlreadyFinalized) return;
+
+    const confirmar = window.confirm(
+      '¿Confirmas cambiar el estado de carpeta de arranque a "Carpeta de arranque finalizada"?'
+    );
+
+    if (!confirmar) return;
+
+    try {
+      setUpdatingEstadoCarpetaArranque(true);
+      await updateSolicitudAcreditacion(project.id, {
+        estado_carpeta_arranque: estadoFinal,
+      });
+
+      setEstadoCarpetaArranque(estadoFinal);
+
+      if (onUpdate) {
+        onUpdate();
+      }
+    } catch (err) {
+      console.error('Error actualizando estado_carpeta_arranque:', err);
+      alert(
+        err instanceof Error
+          ? err.message
+          : 'No se pudo actualizar el estado de carpeta de arranque.'
+      );
+    } finally {
+      setUpdatingEstadoCarpetaArranque(false);
     }
   };
 
@@ -1427,6 +1477,32 @@ const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
                     <span className={`px-4 py-2 rounded-lg text-xs font-bold border-2 ${statusClass}`}>
                       {canonicalStatus}
                     </span>
+                    {estadoCarpetaArranque && (
+                      <span
+                        className={`px-4 py-2 rounded-lg text-xs font-bold border-2 ${
+                          estadoCarpetaArranque.trim().toLowerCase() === 'carpeta de arranque finalizada'
+                            ? 'bg-green-100 text-green-700 border-green-300'
+                            : 'bg-amber-100 text-amber-700 border-amber-300'
+                        }`}
+                      >
+                        {estadoCarpetaArranque}
+                      </span>
+                    )}
+                    {canManageCarpetaArranqueStatus &&
+                      estadoCarpetaArranque &&
+                      estadoCarpetaArranque.trim().toLowerCase() !==
+                        'carpeta de arranque finalizada' && (
+                        <button
+                          type="button"
+                          onClick={handleFinalizarCarpetaArranque}
+                          disabled={updatingEstadoCarpetaArranque}
+                          className="inline-flex h-9 w-56 items-center justify-center rounded-md border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700 transition-colors hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {updatingEstadoCarpetaArranque
+                            ? 'Actualizando carpeta...'
+                            : 'Finalizar carpeta de arranque'}
+                        </button>
+                      )}
                     {canManuallyAdvanceProjectStatus && manualProjectStatusButtonLabel && (
                       <button
                         type="button"

@@ -901,6 +901,7 @@ const ProjectGalleryV2: React.FC<ProjectGalleryV2Props> = ({
                 ? undefined
                 : restrictedAccessStatusMessage;
               const razonSocialContratista = project.razonSocialContratista?.trim();
+              const estadoCarpetaArranque = project.estadoCarpetaArranque?.trim();
 
               return (
                 <div
@@ -1003,10 +1004,15 @@ const ProjectGalleryV2: React.FC<ProjectGalleryV2Props> = ({
                         const statusColor = getStatusColor(displayStatus);
                         
                         return (
-                          <div className="flex flex-col items-end gap-1">
+                          <div className="flex items-center justify-end gap-1">
                             <span className={`px-3 py-1.5 rounded-lg text-xs font-bold border-2 whitespace-nowrap shadow-sm ${statusColor}`}>
                               {displayStatus}
                             </span>
+                            {estadoCarpetaArranque && (
+                              <span className="px-3 py-1.5 rounded-lg text-xs font-bold border-2 whitespace-nowrap shadow-sm bg-amber-100 text-amber-700 border-amber-200">
+                                {estadoCarpetaArranque}
+                              </span>
+                            )}
                           </div>
                         );
                       })()}

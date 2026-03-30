@@ -87,7 +87,7 @@ const PREGUNTAS_REPORTE_SELECT_WITH_ESPECIALIDAD =
 const PREGUNTAS_REPORTE_SELECT_WITH_TEXT_FIELDS =
   `${PREGUNTAS_REPORTE_SELECT_WITH_ESPECIALIDAD},estrategia,respuesta_ia`;
 const ADENDAS_NOTEBOOK_CHAT_BASE_URL = (
-  import.meta.env.VITE_ADENDAS_NOTEBOOK_CHAT_BASE_URL || 'http://localhost:8000'
+  import.meta.env.VITE_ADENDAS_NOTEBOOK_CHAT_BASE_URL || 'http://localhost:8001'
 )
   .trim()
   .replace(/\/+$/, '');
