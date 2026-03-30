@@ -63,6 +63,10 @@ const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
   const [estadoCarpetaArranque, setEstadoCarpetaArranque] = useState<string>(
     project.estadoCarpetaArranque?.trim() || ''
   );
+  const [carpetaArranqueUrl, setCarpetaArranqueUrl] = useState<string>(
+    project.carpetaArranqueUrl?.trim() || ''
+  );
+  const [copiedCarpetaArranqueUrl, setCopiedCarpetaArranqueUrl] = useState(false);
   const [updatingEstadoCarpetaArranque, setUpdatingEstadoCarpetaArranque] = useState(false);
 
   const isReadOnlyCollaborator = accessLevel === 'editor' || accessLevel === 'viewer';
@@ -136,6 +140,11 @@ const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
   // Estado para el modal de completación del proyecto
   const [proyectoCompletadoModalOpen, setProyectoCompletadoModalOpen] = useState(false);
 
+  // Estado para modal de finalización de carpeta de arranque
+  const [finalizarCarpetaArranqueModalOpen, setFinalizarCarpetaArranqueModalOpen] = useState(false);
+  const [carpetaArranqueUrlInput, setCarpetaArranqueUrlInput] = useState('');
+  const [carpetaArranqueUrlError, setCarpetaArranqueUrlError] = useState<string | null>(null);
+
   // Estados para el modal de confirmación de eliminación de documento
   const [eliminarDocumentoModalOpen, setEliminarDocumentoModalOpen] = useState(false);
   const [requerimientoAEliminar, setRequerimientoAEliminar] = useState<number | null>(null);
@@ -176,6 +185,10 @@ const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
   useEffect(() => {
     setEstadoCarpetaArranque(project.estadoCarpetaArranque?.trim() || '');
   }, [project.estadoCarpetaArranque]);
+
+  useEffect(() => {
+    setCarpetaArranqueUrl(project.carpetaArranqueUrl?.trim() || '');
+  }, [project.carpetaArranqueUrl]);
 
   const areRequirementsEquivalent = (
     currentReq: ProjectRequirement,
@@ -466,6 +479,28 @@ const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
     }
   };
 
+  const handleOpenFinalizarCarpetaArranqueModal = () => {
+    if (!canManageCarpetaArranqueStatus) return;
+    if (!estadoCarpetaArranque.trim()) return;
+    if (updatingEstadoCarpetaArranque) return;
+
+    const estadoFinal = 'Carpeta de arranque finalizada';
+    const isAlreadyFinalized =
+      estadoCarpetaArranque.trim().toLowerCase() === estadoFinal.toLowerCase();
+
+    if (isAlreadyFinalized) return;
+
+    setCarpetaArranqueUrlInput(carpetaArranqueUrl);
+    setCarpetaArranqueUrlError(null);
+    setFinalizarCarpetaArranqueModalOpen(true);
+  };
+
+  const handleCloseFinalizarCarpetaArranqueModal = () => {
+    if (updatingEstadoCarpetaArranque) return;
+    setFinalizarCarpetaArranqueModalOpen(false);
+    setCarpetaArranqueUrlError(null);
+  };
+
   const handleFinalizarCarpetaArranque = async () => {
     if (!canManageCarpetaArranqueStatus) return;
     if (!estadoCarpetaArranque.trim()) return;
@@ -477,19 +512,23 @@ const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
 
     if (isAlreadyFinalized) return;
 
-    const confirmar = window.confirm(
-      '¿Confirmas cambiar el estado de carpeta de arranque a "Carpeta de arranque finalizada"?'
-    );
-
-    if (!confirmar) return;
+    const carpetaArranqueUrlValue = carpetaArranqueUrlInput.trim();
+    if (!carpetaArranqueUrlValue) {
+      setCarpetaArranqueUrlError('Debes ingresar la ruta de la carpeta de arranque.');
+      return;
+    }
 
     try {
       setUpdatingEstadoCarpetaArranque(true);
       await updateSolicitudAcreditacion(project.id, {
         estado_carpeta_arranque: estadoFinal,
+        carpeta_arranque_url: carpetaArranqueUrlValue,
       });
 
       setEstadoCarpetaArranque(estadoFinal);
+      setCarpetaArranqueUrl(carpetaArranqueUrlValue);
+      setFinalizarCarpetaArranqueModalOpen(false);
+      setCarpetaArranqueUrlError(null);
 
       if (onUpdate) {
         onUpdate();
@@ -506,7 +545,32 @@ const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
     }
   };
 
+  const handleCopyCarpetaArranqueUrl = async () => {
+    const carpetaArranqueUrlValue = carpetaArranqueUrl.trim();
+    if (!carpetaArranqueUrlValue) return;
 
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(carpetaArranqueUrlValue);
+      } else {
+        const tempInput = document.createElement('textarea');
+        tempInput.value = carpetaArranqueUrlValue;
+        tempInput.style.position = 'fixed';
+        tempInput.style.left = '-9999px';
+        document.body.appendChild(tempInput);
+        tempInput.focus();
+        tempInput.select();
+        document.execCommand('copy');
+        document.body.removeChild(tempInput);
+      }
+
+      setCopiedCarpetaArranqueUrl(true);
+      setTimeout(() => setCopiedCarpetaArranqueUrl(false), 1600);
+    } catch (err) {
+      console.error('Error copiando carpeta_arranque_url:', err);
+      alert('No se pudo copiar la ruta de la carpeta de arranque.');
+    }
+  };
   const handleToggleRealizado = async (e: React.MouseEvent, id: number) => {
     // Detener la propagación para evitar que se active el click del contenedor
     e.stopPropagation();
@@ -1488,13 +1552,40 @@ const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
                         {estadoCarpetaArranque}
                       </span>
                     )}
+                    {estadoCarpetaArranque.trim().toLowerCase() ===
+                      'carpeta de arranque finalizada' &&
+                      carpetaArranqueUrl.trim() !== '' && (
+                        <div className="max-w-[360px] rounded-lg border border-green-200 bg-green-50 px-2.5 py-1.5">
+                          <div className="flex items-center gap-2">
+                            <span className="material-symbols-outlined text-[15px] text-green-700">
+                              folder
+                            </span>
+                            <span
+                              className="min-w-0 flex-1 truncate text-[11px] font-medium text-green-800"
+                              title={carpetaArranqueUrl}
+                            >
+                              {carpetaArranqueUrl}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={handleCopyCarpetaArranqueUrl}
+                              className="inline-flex h-6 w-6 items-center justify-center rounded-md text-green-700 hover:bg-green-100 transition-colors"
+                              title={copiedCarpetaArranqueUrl ? 'Copiado' : 'Copiar ruta'}
+                            >
+                              <span className="material-symbols-outlined text-[14px]">
+                                {copiedCarpetaArranqueUrl ? 'check' : 'content_copy'}
+                              </span>
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     {canManageCarpetaArranqueStatus &&
                       estadoCarpetaArranque &&
                       estadoCarpetaArranque.trim().toLowerCase() !==
                         'carpeta de arranque finalizada' && (
                         <button
                           type="button"
-                          onClick={handleFinalizarCarpetaArranque}
+                          onClick={handleOpenFinalizarCarpetaArranqueModal}
                           disabled={updatingEstadoCarpetaArranque}
                           className="inline-flex h-9 w-56 items-center justify-center rounded-md border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700 transition-colors hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
                         >
@@ -2612,6 +2703,88 @@ const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
         </div>
       )}
 
+      {/* Modal Finalizar Carpeta de Arranque */}
+      {finalizarCarpetaArranqueModalOpen && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999] p-4"
+          onClick={handleCloseFinalizarCarpetaArranqueModal}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="bg-gradient-to-r from-amber-500 to-amber-600 px-6 py-5">
+              <h2 className="text-xl font-bold text-white">Finalizar carpeta de arranque</h2>
+              <p className="text-amber-50 text-sm mt-1">
+                Ingresa la ruta o URL de la carpeta antes de guardar.
+              </p>
+            </div>
+
+            <div className="p-6">
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Ruta carpeta de arranque <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={carpetaArranqueUrlInput}
+                onChange={(e) => {
+                  setCarpetaArranqueUrlInput(e.target.value);
+                  if (carpetaArranqueUrlError) {
+                    setCarpetaArranqueUrlError(null);
+                  }
+                }}
+                placeholder="https://drive.google.com/..."
+                className={`w-full rounded-lg border px-3 py-2.5 text-sm outline-none transition-all ${
+                  carpetaArranqueUrlError
+                    ? 'border-red-300 focus:ring-2 focus:ring-red-200 focus:border-red-400'
+                    : 'border-gray-300 focus:ring-2 focus:ring-primary/20 focus:border-primary'
+                }`}
+              />
+              {carpetaArranqueUrlError && (
+                <p className="mt-2 text-xs font-medium text-red-600">{carpetaArranqueUrlError}</p>
+              )}
+
+              <div className="mt-6 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={handleCloseFinalizarCarpetaArranqueModal}
+                  disabled={updatingEstadoCarpetaArranque}
+                  className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                    updatingEstadoCarpetaArranque
+                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                      : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                  }`}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleFinalizarCarpetaArranque}
+                  disabled={updatingEstadoCarpetaArranque}
+                  className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${
+                    updatingEstadoCarpetaArranque
+                      ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                      : 'bg-amber-600 hover:bg-amber-700 text-white shadow-md hover:shadow-lg'
+                  }`}
+                >
+                  {updatingEstadoCarpetaArranque ? (
+                    <>
+                      <div className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      <span>Guardando...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="material-symbols-outlined text-[18px]">save</span>
+                      <span>Guardar</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal de Proyecto Completado */}
       {proyectoCompletadoModalOpen && (
         <div 
@@ -2756,3 +2929,4 @@ const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
 };
 
 export default ProjectDetailView;
+

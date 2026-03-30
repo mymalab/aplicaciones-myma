@@ -1009,7 +1009,13 @@ const ProjectGalleryV2: React.FC<ProjectGalleryV2Props> = ({
                               {displayStatus}
                             </span>
                             {estadoCarpetaArranque && (
-                              <span className="px-3 py-1.5 rounded-lg text-xs font-bold border-2 whitespace-nowrap shadow-sm bg-amber-100 text-amber-700 border-amber-200">
+                              <span
+                                className={`px-3 py-1.5 rounded-lg text-xs font-bold border-2 whitespace-nowrap shadow-sm ${
+                                  estadoCarpetaArranque.toLowerCase() === 'carpeta de arranque finalizada'
+                                    ? 'bg-green-100 text-green-700 border-green-200'
+                                    : 'bg-amber-100 text-amber-700 border-amber-200'
+                                }`}
+                              >
                                 {estadoCarpetaArranque}
                               </span>
                             )}

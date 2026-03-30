@@ -352,6 +352,7 @@ export interface SolicitudAcreditacion {
   estado?: string;
   estado_solicitud_acreditacion?: SolicitudAcreditacionStatus | string; // Estado específico de la solicitud
   estado_carpeta_arranque?: string | null;
+  carpeta_arranque_url?: string | null;
   // Responsables del proyecto
   empresa_id?: string; // ID de la Empresa Contratista
   empresa_nombre?: string; // Nombre de la Empresa Contratista
@@ -385,6 +386,7 @@ export interface ProjectGalleryItem {
   totalVehicles: number;
   status: SolicitudAcreditacionStatus | string;
   estadoCarpetaArranque?: string;
+  carpetaArranqueUrl?: string;
   workers: Worker[];
   createdAt: string;
   fechaFinalizacion?: string | null;
