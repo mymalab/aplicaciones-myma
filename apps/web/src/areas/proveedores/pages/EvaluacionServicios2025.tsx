@@ -2285,7 +2285,7 @@ const EvaluacionServicios2025: React.FC = () => {
                   })}
                   
                   {/* Checkbox "¿Va a terreno?" */}
-                  <div className="border border-gray-200 rounded-lg p-4">
+                  <div className="border border-red-200 bg-red-50 rounded-lg p-4">
                     <label className={`flex items-center gap-2 ${isEditMode ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
                       <input
                         type="checkbox"
@@ -2295,11 +2295,11 @@ const EvaluacionServicios2025: React.FC = () => {
                         disabled={!isEditMode}
                         className="w-4 h-4 text-primary border-gray-300 rounded focus:ring-primary disabled:cursor-not-allowed"
                       />
-                      <span className="text-sm font-medium text-gray-700">
+                      <span className="text-sm font-semibold text-red-800">
                         ¿Va a terreno?
                       </span>
                     </label>
-                    <p className="text-xs text-gray-500 mt-2 ml-6">
+                    <p className="text-xs text-red-700 mt-2 ml-6">
                       Marque esta opción si el servicio requiere trabajo en terreno. Se agregará un criterio adicional de evaluación.
                     </p>
                   </div>
@@ -2590,4 +2590,3 @@ const EvaluacionServicios2025: React.FC = () => {
 };
 
 export default EvaluacionServicios2025;
-

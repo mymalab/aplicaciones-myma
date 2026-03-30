@@ -1,5 +1,5 @@
 ﻿import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Proveedor, TipoProveedor, Especialidad, Clasificacion } from '../types';
 import { AreaId } from '@contracts/areas';
 import { fetchProveedores, ProveedorResponse, fetchEspecialidadesPriorizadasByRuts, fetchEspecialidades } from '../services/proveedoresService';
@@ -79,6 +79,7 @@ const displayOrPlaceholder = (value: string): string => {
 
 const ProveedoresActuales: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const { hasPermission, loading: loadingPermissions } = usePermissions(AreaId.PROVEEDORES);
   const [proveedores, setProveedores] = useState<ProveedorConContacto[]>([]);
@@ -336,6 +337,22 @@ const ProveedoresActuales: React.FC = () => {
     return `/app/area/${AreaId.PROVEEDORES}/${path}`;
   };
 
+  const [entryFromView] = useState<'dashboard' | 'servicios-evaluados' | null>(() => {
+    const fromView = (location.state as { fromView?: string } | null)?.fromView;
+    return fromView === 'dashboard' || fromView === 'servicios-evaluados' ? fromView : null;
+  });
+  const showBackButton = entryFromView !== null;
+
+  const handleGoBack = () => {
+    if (window.history.length > 1) {
+      navigate(-1);
+      return;
+    }
+
+    const fallbackRoute = entryFromView === 'servicios-evaluados' ? 'servicios-evaluados' : 'dashboard';
+    navigate(getAreaPath(fallbackRoute));
+  };
+
   // Filtrar proveedores
   const normalizedSearchTerm = normalizeSearchText(searchTerm);
   const filteredProveedores = proveedores.filter((proveedor) => {
@@ -448,6 +465,15 @@ const ProveedoresActuales: React.FC = () => {
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-6">
+          {showBackButton && (
+            <button
+              onClick={handleGoBack}
+              className="mb-4 flex items-center gap-2 text-primary hover:text-primary-hover transition-colors"
+            >
+              <span className="material-symbols-outlined">arrow_back</span>
+              <span>Volver a la página anterior</span>
+            </button>
+          )}
           <div className="flex items-center justify-between mb-2">
             <div>
               <h1 className="text-2xl lg:text-3xl font-bold text-[#111318] mb-1">
@@ -591,18 +617,18 @@ const ProveedoresActuales: React.FC = () => {
               <table className="w-full">
                 <thead className="bg-gradient-to-r from-gray-50 to-blue-50 border-b-2 border-gray-200">
                   <tr>
-                    <th className="text-left py-4 px-4 text-sm font-semibold text-gray-700 bg-gradient-to-r from-gray-50 to-blue-50 w-[132px] min-w-[132px]">
-                      INFO ACTUALIZADA
-                    </th>
+                    <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700">CLASIFICACION</th>
                     <th className="sticky left-0 z-20 text-left py-4 px-6 text-sm font-semibold text-gray-700 bg-gradient-to-r from-gray-50 to-blue-50">
                       NOMBRE / RAZON SOCIAL
                     </th>
                     <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700">RUT / TIPO</th>
                     <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700">ESPECIALIDAD</th>
                     <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700">CONTACTO</th>
+                    <th className="text-left py-4 px-4 text-sm font-semibold text-gray-700 bg-gradient-to-r from-gray-50 to-blue-50 w-[132px] min-w-[132px]">
+                      INFO ACTUALIZADA
+                    </th>
                     <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700">ESTADO</th>
                     <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700">EVALUACION</th>
-                    <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700">CLASIFICACION</th>
                     <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700"># EVALUACIONES</th>
                     <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700"># A</th>
                     <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700"># B</th>
@@ -617,18 +643,18 @@ const ProveedoresActuales: React.FC = () => {
                       onClick={() => navigate(getAreaPath(`actuales/${proveedor.id}`))}
                       className="group border-b border-gray-100 hover:bg-blue-50 cursor-pointer transition-colors"
                     >
-                      <td className="py-4 px-4 bg-white group-hover:bg-blue-50 w-[132px] min-w-[132px]">
-                        <div className="flex items-center justify-center">
-                          {isInformacionActualizada(proveedor.cruce) ? (
-                            <span className="material-symbols-outlined text-xl text-green-600" title="Informacion actualizada">
-                              check_circle
-                            </span>
-                          ) : (
-                            <span className="material-symbols-outlined text-xl text-amber-500" title="Informacion no actualizada">
-                              warning
-                            </span>
-                          )}
-                        </div>
+                      <td className="py-4 px-6">
+                        {proveedor.tieneServiciosEjecutados ? (
+                          <div
+                            className={`w-8 h-8 rounded-full flex items-center justify-center font-semibold text-sm ${getClasificacionColor(
+                              proveedor.clasificacion
+                            )}`}
+                          >
+                            {proveedor.clasificacion}
+                          </div>
+                        ) : (
+                          <span className="text-sm text-gray-400">-</span>
+                        )}
                       </td>
                       <td className="sticky left-0 z-10 py-4 px-6 bg-white group-hover:bg-blue-50">
                         <div className="flex flex-col">
@@ -696,6 +722,19 @@ const ProveedoresActuales: React.FC = () => {
                           </button>
                         </div>
                       </td>
+                      <td className="py-4 px-4 bg-white group-hover:bg-blue-50 w-[132px] min-w-[132px]">
+                        <div className="flex items-center justify-center">
+                          {isInformacionActualizada(proveedor.cruce) ? (
+                            <span className="material-symbols-outlined text-xl text-green-600" title="Informacion actualizada">
+                              check_circle
+                            </span>
+                          ) : (
+                            <span className="material-symbols-outlined text-xl text-amber-500" title="Informacion no actualizada">
+                              warning
+                            </span>
+                          )}
+                        </div>
+                      </td>
                       <td className="py-4 px-6">
                         <span
                           className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${
@@ -719,19 +758,6 @@ const ProveedoresActuales: React.FC = () => {
                             <span className="text-sm font-medium text-[#111318] min-w-[40px]">
                               {proveedor.evaluacion}%
                             </span>
-                          </div>
-                        ) : (
-                          <span className="text-sm text-gray-400">-</span>
-                        )}
-                      </td>
-                      <td className="py-4 px-6">
-                        {proveedor.tieneServiciosEjecutados ? (
-                          <div
-                            className={`w-8 h-8 rounded-full flex items-center justify-center font-semibold text-sm ${getClasificacionColor(
-                              proveedor.clasificacion
-                            )}`}
-                          >
-                            {proveedor.clasificacion}
                           </div>
                         ) : (
                           <span className="text-sm text-gray-400">-</span>

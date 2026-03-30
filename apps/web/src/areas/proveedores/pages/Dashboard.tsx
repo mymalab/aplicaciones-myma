@@ -206,9 +206,9 @@ const Dashboard: React.FC = () => {
   const isSearchingEspecialidad = searchEspecialidad.trim().length > 0;
   const showOnlyTopEspecialidades = !showAllEspecialidades && !isSearchingEspecialidad;
   const especialidadesVisibles = showOnlyTopEspecialidades
-    ? proveedoresPorComponente.slice(0, 10)
+    ? proveedoresPorComponente.slice(0, 12)
     : proveedoresPorComponente;
-  const canToggleEspecialidades = !isSearchingEspecialidad && proveedoresPorComponente.length > 10;
+  const canToggleEspecialidades = !isSearchingEspecialidad && proveedoresPorComponente.length > 12;
 
   // Distribución por clasificación
   const distribucionClasificacion = useMemo(() => {
@@ -426,7 +426,7 @@ const Dashboard: React.FC = () => {
             </div>
             <span className="text-sm text-gray-500">
               {showOnlyTopEspecialidades
-                ? `Mostrando 10 de ${proveedoresPorComponente.length} especialidades`
+                ? `Mostrando 12 de ${proveedoresPorComponente.length} especialidades`
                 : `${proveedoresPorComponente.length} especialidades`}
             </span>
           </div>
@@ -450,10 +450,12 @@ const Dashboard: React.FC = () => {
                 key={index}
                 onClick={() => {
                   if (activeDashboard === 'proveedores') {
-                    navigate(`${getAreaPath('actuales')}?especialidad=${encodeURIComponent(componente.nombre)}`);
+                    navigate(`${getAreaPath('actuales')}?especialidad=${encodeURIComponent(componente.nombre)}`, {
+                      state: { fromView: 'dashboard' }
+                    });
                   } else {
                     navigate(getAreaPath('evaluaciones-tabla'), {
-                      state: { especialidad: componente.nombre }
+                      state: { especialidad: componente.nombre, fromView: 'dashboard' }
                     });
                   }
                 }}
@@ -546,7 +548,11 @@ const Dashboard: React.FC = () => {
                       width: `${item.porcentaje}%`,
                       backgroundColor: item.color,
                     }}
-                    onClick={() => navigate(`${getAreaPath('actuales')}?clasificacion=${clasificacion}`)}
+                    onClick={() =>
+                      navigate(`${getAreaPath('actuales')}?clasificacion=${clasificacion}`, {
+                        state: { fromView: 'dashboard' }
+                      })
+                    }
                     title={`Ver proveedores ${item.nombre}`}
                   >
                     {item.porcentaje > 0 && `${item.porcentaje}%`}
@@ -621,7 +627,11 @@ const Dashboard: React.FC = () => {
               <div className="text-center py-4">
                 <p className="text-sm text-gray-500 mb-2">No hay proveedores inhabilitados</p>
                 <button
-                  onClick={() => navigate(`${getAreaPath('actuales')}?evaluacionMenor60=true`)}
+                  onClick={() =>
+                    navigate(`${getAreaPath('actuales')}?evaluacionMenor60=true`, {
+                      state: { fromView: 'dashboard' }
+                    })
+                  }
                   className="text-sm text-primary hover:underline font-medium"
                 >
                   Ver todos los proveedores inhabilitados
@@ -675,7 +685,11 @@ const Dashboard: React.FC = () => {
                   </div>
                 ))}
                 <button
-                  onClick={() => navigate(getAreaPath('actuales'))}
+                  onClick={() =>
+                    navigate(getAreaPath('actuales'), {
+                      state: { fromView: 'dashboard' }
+                    })
+                  }
                   className="w-full text-sm text-primary hover:underline flex items-center justify-center gap-1 mt-3 pt-3 border-t border-gray-200"
                 >
                   VER RANKING COMPLETO
@@ -686,7 +700,11 @@ const Dashboard: React.FC = () => {
               <div className="text-center py-4">
                 <p className="text-sm text-gray-500 mb-2">No hay proveedores con evaluación registrada</p>
                 <button
-                  onClick={() => navigate(getAreaPath('actuales'))}
+                  onClick={() =>
+                    navigate(getAreaPath('actuales'), {
+                      state: { fromView: 'dashboard' }
+                    })
+                  }
                   className="text-sm text-primary hover:underline"
                 >
                   Ver todos los proveedores

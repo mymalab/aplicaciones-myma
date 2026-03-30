@@ -51,6 +51,16 @@ const ServiciosEvaluados: React.FC<ServiciosEvaluadosProps> = ({ onDashboardChan
     return `/app/area/${AreaId.PROVEEDORES}/${path}`;
   };
 
+  const navigateToEvaluacionesTabla = (state: Record<string, unknown>) => {
+    const fromView = onDashboardChange ? 'dashboard' : 'servicios-evaluados';
+    navigate(getAreaPath('evaluaciones-tabla'), {
+      state: {
+        ...state,
+        fromView,
+      },
+    });
+  };
+
   // Cargar especialidades
   useEffect(() => {
     const loadEspecialidades = async () => {
@@ -184,9 +194,9 @@ const ServiciosEvaluados: React.FC<ServiciosEvaluadosProps> = ({ onDashboardChan
   const isSearchingEspecialidad = searchEspecialidad.trim().length > 0;
   const showOnlyTopEspecialidades = !showAllEspecialidades && !isSearchingEspecialidad;
   const especialidadesVisibles = showOnlyTopEspecialidades
-    ? serviciosPorEspecialidad.slice(0, 10)
+    ? serviciosPorEspecialidad.slice(0, 12)
     : serviciosPorEspecialidad;
-  const canToggleEspecialidades = !isSearchingEspecialidad && serviciosPorEspecialidad.length > 10;
+  const canToggleEspecialidades = !isSearchingEspecialidad && serviciosPorEspecialidad.length > 12;
 
   // Filtrar servicios excluyendo proveedor "PRUEBA" para cálculos
   const serviciosSinPrueba = useMemo(() => {
@@ -553,7 +563,7 @@ const ServiciosEvaluados: React.FC<ServiciosEvaluadosProps> = ({ onDashboardChan
             </div>
             <span className="text-sm text-gray-500">
               {showOnlyTopEspecialidades
-                ? `Mostrando 10 de ${serviciosPorEspecialidad.length} especialidades`
+                ? `Mostrando 12 de ${serviciosPorEspecialidad.length} especialidades`
                 : `${serviciosPorEspecialidad.length} especialidades`}
             </span>
           </div>
@@ -578,9 +588,7 @@ const ServiciosEvaluados: React.FC<ServiciosEvaluadosProps> = ({ onDashboardChan
                 onClick={() => {
                   if (onDashboardChange) {
                     // Si se usa desde Dashboard, navegar a EvaluacionesTabla
-                    navigate(getAreaPath('evaluaciones-tabla'), {
-                      state: { especialidad: especialidad.nombre }
-                    });
+                    navigateToEvaluacionesTabla({ especialidad: especialidad.nombre });
                   } else {
                     // Si se usa como ruta independiente, filtrar en la misma vista
                     setFilterEspecialidad(especialidad.nombre);
@@ -650,9 +658,7 @@ const ServiciosEvaluados: React.FC<ServiciosEvaluadosProps> = ({ onDashboardChan
                         backgroundColor: item.color,
                       }}
                       onClick={() => {
-                        navigate(getAreaPath('evaluaciones-tabla'), {
-                          state: { categoria: clasificacion }
-                        });
+                        navigateToEvaluacionesTabla({ categoria: clasificacion });
                       }}
                       title={`Ver servicios ${item.nombre}`}
                     >
@@ -711,9 +717,7 @@ const ServiciosEvaluados: React.FC<ServiciosEvaluadosProps> = ({ onDashboardChan
                     key={especialidad.nombre}
                     className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:border-green-300 transition-colors cursor-pointer"
                     onClick={() => {
-                      navigate(getAreaPath('evaluaciones-tabla'), {
-                        state: { especialidad: especialidad.nombre }
-                      });
+                      navigateToEvaluacionesTabla({ especialidad: especialidad.nombre });
                     }}
                   >
                     <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm shrink-0 ${
@@ -776,9 +780,7 @@ const ServiciosEvaluados: React.FC<ServiciosEvaluadosProps> = ({ onDashboardChan
                     key={especialidad.nombre}
                     className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:border-red-300 transition-colors cursor-pointer"
                     onClick={() => {
-                      navigate(getAreaPath('evaluaciones-tabla'), {
-                        state: { especialidad: especialidad.nombre }
-                      });
+                      navigateToEvaluacionesTabla({ especialidad: especialidad.nombre });
                     }}
                   >
                     <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm shrink-0 ${

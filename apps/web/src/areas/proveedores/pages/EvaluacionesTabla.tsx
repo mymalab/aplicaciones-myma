@@ -42,6 +42,22 @@ const EvaluacionesTabla: React.FC = () => {
     return `/app/area/${AreaId.PROVEEDORES}/${path}`;
   };
 
+  const [entryFromView] = useState<'dashboard' | 'servicios-evaluados' | null>(() => {
+    const fromView = (location.state as { fromView?: string } | null)?.fromView;
+    return fromView === 'dashboard' || fromView === 'servicios-evaluados' ? fromView : null;
+  });
+  const showBackButton = entryFromView !== null;
+
+  const handleGoBack = () => {
+    if (window.history.length > 1) {
+      navigate(-1);
+      return;
+    }
+
+    const fallbackRoute = entryFromView === 'servicios-evaluados' ? 'servicios-evaluados' : 'dashboard';
+    navigate(getAreaPath(fallbackRoute));
+  };
+
   // Leer parámetro de categoría desde el estado de navegación
   useEffect(() => {
     const categoriaParam = (location.state as any)?.categoria;
@@ -255,6 +271,15 @@ const EvaluacionesTabla: React.FC = () => {
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-6">
+          {showBackButton && (
+            <button
+              onClick={handleGoBack}
+              className="mb-4 flex items-center gap-2 text-primary hover:text-primary-hover transition-colors"
+            >
+              <span className="material-symbols-outlined">arrow_back</span>
+              <span>Volver a la página anterior</span>
+            </button>
+          )}
           <div className="flex items-center justify-between mb-2">
             <div>
               <h1 className="text-2xl lg:text-3xl font-bold text-[#111318] mb-1">
@@ -592,4 +617,3 @@ const EvaluacionesTabla: React.FC = () => {
 };
 
 export default EvaluacionesTabla;
-
