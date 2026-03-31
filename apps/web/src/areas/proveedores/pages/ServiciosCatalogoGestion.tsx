@@ -83,14 +83,14 @@ const ServiciosCatalogoGestion: React.FC = () => {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<ModalMode>('create');
-  const [selectedServicio, setSelectedServicio] = useState<ServicioCatalogoDisponible | null>(null);
+  const [selectedServicio, setSelectedServicio] = useState<ServicioCatalogoVisual | null>(null);
   const [formServicio, setFormServicio] = useState('');
   const [formEspecialidades, setFormEspecialidades] = useState<string[]>([]);
   const [searchEspecialidadModal, setSearchEspecialidadModal] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
-  const [servicioToDelete, setServicioToDelete] = useState<ServicioCatalogoDisponible | null>(null);
+  const [servicioToDelete, setServicioToDelete] = useState<ServicioCatalogoVisual | null>(null);
 
   const canCreate = !loadingPermissions && hasPermission(`${AreaId.PROVEEDORES}:create`);
   const canEdit = !loadingPermissions && hasPermission(`${AreaId.PROVEEDORES}:edit`);
@@ -269,11 +269,11 @@ const ServiciosCatalogoGestion: React.FC = () => {
     setIsModalOpen(true);
   };
 
-  const openEditModal = (item: ServicioCatalogoDisponible) => {
+  const openEditModal = (item: ServicioCatalogoVisual) => {
     setModalMode('edit');
     setSelectedServicio(item);
     setFormServicio(item.servicio);
-    setFormEspecialidades(getEspecialidadesFromJsonb(item.especialidad));
+    setFormEspecialidades(getEspecialidadesFromJsonb(item.especialidadRaw));
     setSearchEspecialidadModal('');
     setFormError(null);
     setIsModalOpen(true);
@@ -324,7 +324,7 @@ const ServiciosCatalogoGestion: React.FC = () => {
     }
   };
 
-  const requestDelete = (item: ServicioCatalogoDisponible) => {
+  const requestDelete = (item: ServicioCatalogoVisual) => {
     if (!canDelete || deletingId !== null) return;
     setServicioToDelete(item);
   };
@@ -355,7 +355,7 @@ const ServiciosCatalogoGestion: React.FC = () => {
   };
 
   const especialidadesServicioAEliminar = servicioToDelete
-    ? getEspecialidadesFromJsonb(servicioToDelete.especialidad)
+    ? getEspecialidadesFromJsonb(servicioToDelete.especialidadRaw)
     : [];
   return (
     <div className="min-h-screen bg-[#f8fafc] p-4 lg:p-8">
@@ -593,7 +593,7 @@ const ServiciosCatalogoGestion: React.FC = () => {
       {isModalOpen && (
         <div
           className="fixed inset-0 z-50 bg-black/50 backdrop-blur-[1px] flex items-center justify-center p-4"
-          onClick={closeModal}
+          onClick={() => closeModal()}
         >
           <div
             className="w-full max-w-xl rounded-2xl border border-gray-200 bg-white shadow-2xl"
@@ -612,7 +612,7 @@ const ServiciosCatalogoGestion: React.FC = () => {
               </div>
               <button
                 type="button"
-                onClick={closeModal}
+                onClick={() => closeModal()}
                 className="rounded-lg border border-gray-300 p-2 text-gray-600 hover:bg-gray-100 transition-colors"
                 aria-label="Cerrar"
               >
@@ -735,7 +735,7 @@ const ServiciosCatalogoGestion: React.FC = () => {
               <div className="flex items-center justify-end gap-3 pt-2 border-t border-gray-200">
                 <button
                   type="button"
-                  onClick={closeModal}
+                  onClick={() => closeModal()}
                   disabled={saving}
                   className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors disabled:opacity-50"
                 >

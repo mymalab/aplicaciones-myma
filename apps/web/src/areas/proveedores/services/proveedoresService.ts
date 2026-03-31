@@ -149,11 +149,17 @@ export const fetchProveedorById = async (id: number): Promise<ProveedorResponse 
 export interface ProveedorServicioCatalogo {
   id: number;
   servicio: string;
-  especialidad: string;
+  especialidad: unknown;
   nombre_proveedor: string;
   rut: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface ProveedorServicioCatalogoNormalizado {
+  servicio: string;
+  especialidades: string[];
+  especialidadLabel: string;
 }
 
 export interface ServicioCatalogoDisponible {
@@ -502,6 +508,52 @@ export const fetchServiciosCatalogoByRut = async (rut: string): Promise<Proveedo
   return data || [];
 };
 
+export const normalizeServiciosCatalogoByRut = (
+  catalogo: ProveedorServicioCatalogo[]
+): ProveedorServicioCatalogoNormalizado[] => {
+  const byServicio = new Map<string, { servicio: string; especialidades: string[] }>();
+
+  catalogo.forEach((item) => {
+    const servicioVisible = item.servicio.trim();
+    if (!servicioVisible) {
+      return;
+    }
+
+    const servicioKey = normalizeSearchText(servicioVisible);
+    if (!servicioKey) {
+      return;
+    }
+
+    const especialidades = dedupeEspecialidades(extractEspecialidadesFromJsonb(item.especialidad));
+    const existing = byServicio.get(servicioKey);
+
+    if (!existing) {
+      byServicio.set(servicioKey, {
+        servicio: servicioVisible,
+        especialidades,
+      });
+      return;
+    }
+
+    existing.especialidades = dedupeEspecialidades([...existing.especialidades, ...especialidades]);
+  });
+
+  return Array.from(byServicio.values())
+    .map((item) => ({
+      servicio: item.servicio,
+      especialidades: item.especialidades,
+      especialidadLabel: item.especialidades.join(', '),
+    }))
+    .sort((a, b) => a.servicio.localeCompare(b.servicio, 'es', { sensitivity: 'base' }));
+};
+
+export const fetchServiciosCatalogoNormalizadosByRut = async (
+  rut: string
+): Promise<ProveedorServicioCatalogoNormalizado[]> => {
+  const catalogo = await fetchServiciosCatalogoByRut(rut);
+  return normalizeServiciosCatalogoByRut(catalogo);
+};
+
 /**
  * Eliminar un proveedor
  */
@@ -694,7 +746,7 @@ export const fetchEspecialidadesByNombreProveedor = async (rutProveedor: string)
  * Obtener las especialidades de un proveedor
  */
 
-const extractEspecialidadesFromJsonb = (value: unknown): string[] => {
+export const extractEspecialidadesFromJsonb = (value: unknown): string[] => {
   const values: string[] = [];
   const visited = new WeakSet<object>();
   const priorityKeys = ['especialidad', 'especialidades', 'values', 'value', 'items', 'lista'];
@@ -960,7 +1012,8 @@ export const saveProveedorEspecialidades = async (
 export interface EvaluacionServiciosData {
   nombre_proveedor: string;
   rut?: string | null;
-  especialidad?: string | null;
+  servicio?: string | null;
+  especialidad?: unknown | null;
   actividad?: string | null;
   orden_compra?: string | null;
   codigo_proyecto?: string | null;
@@ -1101,6 +1154,7 @@ export interface EvaluacionProveedor {
   nombre?: string | null; // nombre_proveedor en la tabla
   nombre_proveedor?: string | null; // Campo principal
   rut?: string | null;
+  servicio?: string | null;
   especialidad?: string | null;
   actividad?: string | null;
   orden_compra?: string | null;
@@ -1155,7 +1209,7 @@ export const fetchEvaluacionesByNombreProveedor = async (
     throw error;
   }
 
-  return data || [];
+  return normalizeEvaluacionesEspecialidad(data || []);
 };
 
 /**
@@ -1182,7 +1236,7 @@ export const fetchEvaluacionesByRutProveedor = async (
     console.log('[DEBUG] Evaluaciones encontradas:', data);
   }
 
-  return data || [];
+  return normalizeEvaluacionesEspecialidad(data || []);
 };
 
 /**
@@ -1203,5 +1257,19 @@ export const fetchAllEvaluaciones = async (): Promise<EvaluacionProveedor[]> => 
 
   console.log(`[DEBUG] Encontradas ${data?.length || 0} evaluaciones en total`);
 
-  return data || [];
+  return normalizeEvaluacionesEspecialidad(data || []);
+};
+
+const normalizeEvaluacionesEspecialidad = (
+  rows: EvaluacionProveedor[]
+): EvaluacionProveedor[] => {
+  return rows.map((item) => {
+    const especialidades = extractEspecialidadesFromJsonb((item as any).especialidad);
+    const especialidadLabel = especialidades.join(', ').trim();
+
+    return {
+      ...item,
+      especialidad: especialidadLabel || null,
+    };
+  });
 };

@@ -410,7 +410,7 @@ const ProveedorDetalle: React.FC = () => {
         return {
           id: editingCatalogoServicio.id,
           servicio: editingCatalogoServicio.servicio,
-          especialidad: editingCatalogoServicio.especialidad,
+          especialidad: getEspecialidadLabel(editingCatalogoServicio.especialidad),
           especialidades,
           especialidadLabel,
         };
@@ -553,7 +553,7 @@ const ProveedorDetalle: React.FC = () => {
     setSelectedEditCatalogoDisponible({
       id: item.id,
       servicio: item.servicio,
-      especialidad: item.especialidad,
+      especialidad: getEspecialidadLabel(item.especialidad),
     });
     setSearchEditCatalogoDisponibles('');
     setErrorEditCatalogoServicio(null);
@@ -1630,4 +1630,3 @@ const ProveedorDetalle: React.FC = () => {
 };
 
 export default ProveedorDetalle;
-

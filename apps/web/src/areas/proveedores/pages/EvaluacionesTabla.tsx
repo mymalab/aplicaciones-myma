@@ -1,7 +1,12 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { AreaId } from '@contracts/areas';
-import { fetchAllEvaluaciones, EvaluacionProveedor, fetchEspecialidades } from '../services/proveedoresService';
+import {
+  fetchAllEvaluaciones,
+  EvaluacionProveedor,
+  fetchEspecialidades,
+  extractEspecialidadesFromJsonb,
+} from '../services/proveedoresService';
 import { normalizeSearchText } from '../utils/search';
 
 interface ServicioEvaluado {
@@ -21,6 +26,19 @@ interface ServicioEvaluado {
   precioServicio: number | null;
   linkServicioEjecutado: string | null;
 }
+
+const splitEspecialidades = (value: string | null | undefined): string[] => {
+  if (!value) return [];
+
+  return Array.from(
+    new Set(
+      extractEspecialidadesFromJsonb(value)
+        .flatMap((item) => item.split(','))
+        .map((item) => item.trim())
+        .filter(Boolean)
+    )
+  );
+};
 
 const EvaluacionesTabla: React.FC = () => {
   const navigate = useNavigate();
@@ -139,6 +157,19 @@ const EvaluacionesTabla: React.FC = () => {
     return proveedores.sort();
   }, [servicios]);
 
+  const especialidadesFiltro = useMemo(() => {
+    const fromCatalogo = especialidades
+      .map((item) => item.nombre.trim())
+      .filter(Boolean);
+    const fromServicios = servicios.flatMap((servicio) =>
+      splitEspecialidades(servicio.especialidad)
+    );
+
+    return Array.from(new Set([...fromCatalogo, ...fromServicios])).sort((a, b) =>
+      a.localeCompare(b, 'es', { sensitivity: 'base' })
+    );
+  }, [especialidades, servicios]);
+
   // Filtrar servicios y agrupar/ordenar por proveedor (alfabético)
   const filteredServicios = useMemo(() => {
     const normalizedSearchTerm = normalizeSearchText(searchTerm);
@@ -150,10 +181,16 @@ const EvaluacionesTabla: React.FC = () => {
         normalizeSearchText(servicio.nombreProyecto).includes(normalizedSearchTerm) ||
         normalizeSearchText(servicio.codigoProyecto).includes(normalizedSearchTerm) ||
         normalizeSearchText(servicio.actividad).includes(normalizedSearchTerm) ||
+        normalizeSearchText(servicio.especialidad).includes(normalizedSearchTerm) ||
         normalizeSearchText(servicio.rut).includes(normalizedSearchTerm);
       
       const matchesProveedor = filterProveedor === 'Todos' || servicio.nombreProveedor === filterProveedor;
-      const matchesEspecialidad = filterEspecialidad === 'Todas' || servicio.especialidad === filterEspecialidad;
+      const matchesEspecialidad =
+        filterEspecialidad === 'Todas' ||
+        splitEspecialidades(servicio.especialidad).some(
+          (especialidad) =>
+            normalizeSearchText(especialidad) === normalizeSearchText(filterEspecialidad)
+        );
       const matchesCategoria = filterCategoria === 'Todas' || servicio.categoria === filterCategoria;
 
       return matchesSearch && matchesProveedor && matchesEspecialidad && matchesCategoria;
@@ -342,9 +379,9 @@ const EvaluacionesTabla: React.FC = () => {
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary bg-white"
               >
                 <option value="Todas">Todas las especialidades</option>
-                {especialidades.map((esp) => (
-                  <option key={esp.id} value={esp.nombre}>
-                    {esp.nombre}
+                {especialidadesFiltro.map((especialidad) => (
+                  <option key={especialidad} value={especialidad}>
+                    {especialidad}
                   </option>
                 ))}
               </select>
@@ -458,12 +495,17 @@ const EvaluacionesTabla: React.FC = () => {
                         </div>
                       </td>
                       <td className="py-4 px-6">
-                        {servicio.especialidad ? (
-                          <span
-                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${getEspecialidadColor(servicio.especialidad)}`}
-                          >
-                            {servicio.especialidad}
-                          </span>
+                        {splitEspecialidades(servicio.especialidad).length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {splitEspecialidades(servicio.especialidad).map((especialidad) => (
+                              <span
+                                key={servicio.id + '-' + especialidad}
+                                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${getEspecialidadColor(especialidad)}`}
+                              >
+                                {especialidad}
+                              </span>
+                            ))}
+                          </div>
                         ) : (
                           <span className="text-sm text-gray-400">—</span>
                         )}

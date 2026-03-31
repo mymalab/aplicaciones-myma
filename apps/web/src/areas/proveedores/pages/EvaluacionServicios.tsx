@@ -1,7 +1,21 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { AreaId } from '@contracts/areas';
-import { fetchProveedores, ProveedorResponse, saveEvaluacionServicios, updateEvaluacionServicios, EvaluacionServiciosData, sendEvaluacionProveedorToN8n, fetchEspecialidades, fetchPersonas, Persona, createEspecialidad, EvaluacionProveedor, deleteEvaluacionServicios } from '../services/proveedoresService';
+import {
+  fetchProveedores,
+  ProveedorResponse,
+  saveEvaluacionServicios,
+  updateEvaluacionServicios,
+  EvaluacionServiciosData,
+  sendEvaluacionProveedorToN8n,
+  fetchPersonas,
+  Persona,
+  EvaluacionProveedor,
+  deleteEvaluacionServicios,
+  fetchServiciosCatalogoNormalizadosByRut,
+  ProveedorServicioCatalogoNormalizado,
+  extractEspecialidadesFromJsonb,
+} from '../services/proveedoresService';
 import { usePermissions } from '@shared/rbac/usePermissions';
 import { supabase } from '@shared/api-client/supabase';
 import jsPDF from 'jspdf';
@@ -27,6 +41,7 @@ interface EvaluacionData {
   vaTerreno: boolean;
   criterios: CriterioEvaluacion[];
   observaciones: string;
+  servicio: string;
   especialidad: string;
   codigoProyecto: string;
   nombreProyecto: string;
@@ -40,14 +55,13 @@ const EvaluacionServicios: React.FC = () => {
   const { hasPermission, loading: loadingPermissions } = usePermissions(AreaId.PROVEEDORES);
   const [loading, setLoading] = useState(false);
   const [loadingProveedores, setLoadingProveedores] = useState(true);
-  const [loadingEspecialidades, setLoadingEspecialidades] = useState(true);
+  const [loadingServiciosCatalogo, setLoadingServiciosCatalogo] = useState(false);
   const [loadingPersonas, setLoadingPersonas] = useState(true);
   const [proveedores, setProveedores] = useState<ProveedorResponse[]>([]);
-  const [especialidades, setEspecialidades] = useState<{ id: number; nombre: string }[]>([]);
+  const [serviciosCatalogo, setServiciosCatalogo] = useState<ProveedorServicioCatalogoNormalizado[]>([]);
+  const [serviciosCatalogoError, setServiciosCatalogoError] = useState<string | null>(null);
+  const [especialidadHistoricaReferencia, setEspecialidadHistoricaReferencia] = useState<string | null>(null);
   const [personas, setPersonas] = useState<Persona[]>([]);
-  const [showModalEspecialidad, setShowModalEspecialidad] = useState(false);
-  const [nuevaEspecialidadNombre, setNuevaEspecialidadNombre] = useState('');
-  const [guardandoEspecialidad, setGuardandoEspecialidad] = useState(false);
   const [evaluacionId, setEvaluacionId] = useState<number | null>(null); // ID de la evaluación que se está editando
   const [isEditMode, setIsEditMode] = useState(false); // Modo de edición (false = solo lectura)
   const [initialFormData, setInitialFormData] = useState<EvaluacionData | null>(null); // Estado inicial para detectar cambios
@@ -87,6 +101,7 @@ const EvaluacionServicios: React.FC = () => {
       { id: 'precio', nombre: 'Precio respecto de la competencia', peso: 15.9, valor: null },
     ],
     observaciones: '',
+    servicio: '',
     especialidad: '',
     codigoProyecto: '',
     nombreProyecto: '',
@@ -115,23 +130,6 @@ const EvaluacionServicios: React.FC = () => {
     loadProveedores();
   }, []);
 
-  // Cargar especialidades
-  useEffect(() => {
-    const loadEspecialidades = async () => {
-      try {
-        setLoadingEspecialidades(true);
-        const data = await fetchEspecialidades();
-        setEspecialidades(data);
-      } catch (err) {
-        console.error('Error al cargar especialidades:', err);
-      } finally {
-        setLoadingEspecialidades(false);
-      }
-    };
-
-    loadEspecialidades();
-  }, []);
-
   // Cargar personas
   useEffect(() => {
     const loadPersonas = async () => {
@@ -149,10 +147,35 @@ const EvaluacionServicios: React.FC = () => {
     loadPersonas();
   }, []);
 
+  const normalizeComparableText = (value: string | null | undefined): string =>
+    (value || '').trim().toLocaleLowerCase('es-CL');
+
+  const loadServiciosCatalogoByRut = async (
+    rut: string
+  ): Promise<ProveedorServicioCatalogoNormalizado[]> => {
+    setLoadingServiciosCatalogo(true);
+    setServiciosCatalogoError(null);
+    try {
+      const servicios = await fetchServiciosCatalogoNormalizadosByRut(rut);
+      setServiciosCatalogo(servicios);
+      if (servicios.length === 0) {
+        setServiciosCatalogoError('No hay servicios disponibles para este proveedor.');
+      }
+      return servicios;
+    } catch (err) {
+      console.error('Error al cargar servicios por RUT:', err);
+      setServiciosCatalogo([]);
+      setServiciosCatalogoError('No se pudieron cargar los servicios de este proveedor.');
+      return [];
+    } finally {
+      setLoadingServiciosCatalogo(false);
+    }
+  };
+
   // Cargar datos de evaluación si se está editando
   useEffect(() => {
     const evaluacionData = location.state?.evaluacionData as EvaluacionProveedor | undefined;
-    
+
     if (evaluacionData) {
       // Guardar created_by de la evaluación actual (si viene desde EvaluacionesTabla / servicios)
       // Aunque el tipo EvaluacionProveedor no lo declare explícito, viene como parte del registro base
@@ -160,193 +183,212 @@ const EvaluacionServicios: React.FC = () => {
       setCreatedBy(evaluacionData.created_by ?? null);
     }
 
-    if (evaluacionData && proveedores.length > 0 && especialidades.length > 0 && personas.length > 0) {
-      console.log('📝 Cargando datos de evaluación para editar:', evaluacionData);
-      
-      // Buscar el proveedor por nombre o RUT
-      const proveedorEncontrado = proveedores.find(
-        (p) => 
-          p.nombre_proveedor === evaluacionData.nombre_proveedor || 
-          p.nombre_proveedor === evaluacionData.nombre ||
-          p.rut === evaluacionData.rut
-      );
+    const hydrateEvaluacion = async () => {
+      if (evaluacionData && proveedores.length > 0 && personas.length > 0) {
+        console.log('📝 Cargando datos de evaluación para editar:', evaluacionData);
 
-      // Función helper para mapear texto de evaluación a valor del formulario
-      // Los textos en la BD son descriptivos (ej: "Sobresaliente", "Buena"), pero el formulario usa ALTO, MEDIO, BAJO, MUY_BAJO
-      const mapearTextoAValor = (texto: string | null | undefined, criterioId: string): 'ALTO' | 'MEDIO' | 'BAJO' | 'MUY_BAJO' | 'A' | 'B' | 'C' | null => {
-        if (!texto) return null;
-        const textoUpper = texto.toUpperCase();
-        
-        // Mapear valores directos
-        if (['ALTO', 'MEDIO', 'BAJO', 'MUY_BAJO', 'A', 'B', 'C'].includes(textoUpper)) {
-          return textoUpper as 'ALTO' | 'MEDIO' | 'BAJO' | 'MUY_BAJO' | 'A' | 'B' | 'C';
-        }
-        
-        // Obtener las opciones del criterio para mapear correctamente
-        const opciones = getCriterioOpciones(criterioId);
-        
-        // Mapear textos descriptivos a valores según el criterio
-        if (textoUpper.includes(opciones.ALTO.toUpperCase()) || textoUpper.includes('SOBRESALIENTE') || textoUpper.includes('EXCELENTE')) {
-          return 'ALTO';
-        }
-        if (textoUpper.includes(opciones.MEDIO.toUpperCase()) || textoUpper.includes('BUENA') || textoUpper.includes('BUENO') || textoUpper.includes('ALTA')) {
-          return 'MEDIO';
-        }
-        if (textoUpper.includes(opciones.BAJO.toUpperCase()) || textoUpper.includes('REGULAR') || textoUpper.includes('MEDIANA')) {
-          return 'BAJO';
-        }
-        if (textoUpper.includes(opciones.MUY_BAJO.toUpperCase()) || textoUpper.includes('DEFICIENTE') || textoUpper.includes('NULA') || textoUpper.includes('MUY ELEVADO')) {
-          return 'MUY_BAJO';
-        }
-        
-        return null;
-      };
-
-      // Mapear los criterios de evaluación con función inversa
-      const criteriosMapeados: CriterioEvaluacion[] = [
-        { 
-          id: 'calidad', 
-          nombre: 'Calidad', 
-          peso: 52.2, 
-          valor: mapearTextoAValor(evaluacionData.evaluacion_calidad, 'calidad')
-        },
-        { 
-          id: 'disponibilidad', 
-          nombre: 'Disposición operativa y colaboración', 
-          peso: 18.2, 
-          valor: mapearTextoAValor(evaluacionData.evaluacion_disponibilidad, 'disponibilidad')
-        },
-        { 
-          id: 'cumplimiento', 
-          nombre: 'Cumplimiento fecha de entrega', 
-          peso: 13.7, 
-          valor: mapearTextoAValor(evaluacionData.evaluacion_fecha_entrega, 'cumplimiento')
-        },
-        { 
-          id: 'precio', 
-          nombre: 'Precio respecto de la competencia', 
-          peso: 15.9, 
-          valor: mapearTextoAValor(evaluacionData.evaluacion_precio, 'precio')
-        },
-      ];
-
-      // Buscar IDs de personas por nombre completo
-      const jefeProyectoPersona = personas.find(
-        (p) => p.nombre_completo === evaluacionData.jefe_proyecto
-      );
-      const gerenteProyectoPersona = personas.find(
-        (p) => p.nombre_completo === evaluacionData.gerente_proyecto
-      );
-      const evaluadorPersona = personas.find(
-        (p) => p.nombre_completo === evaluacionData.evaluador
-      );
-
-      // Buscar especialidad por nombre
-      const especialidadEncontrada = especialidades.find(
-        (e) => e.nombre === evaluacionData.especialidad
-      );
-
-      // Formatear código de proyecto si existe
-      let codigoProyectoFormateado = evaluacionData.codigo_proyecto || '';
-      if (codigoProyectoFormateado && !codigoProyectoFormateado.startsWith('MY-')) {
-        // Si viene sin formato, intentar formatearlo
-        const match = codigoProyectoFormateado.match(/(\d{3})-(\d{4})/);
-        if (match) {
-          codigoProyectoFormateado = `MY-${match[1]}-${match[2]}`;
-        }
-      }
-
-      setFormData({
-        proveedorId: proveedorEncontrado?.id.toString() || '',
-        nombreContacto: evaluacionData.nombre_contacto || evaluacionData.correo_contacto?.split('@')[0] || '', // Usar nombre_contacto si existe, sino extraer del correo
-        correoContacto: evaluacionData.correo_contacto || '',
-        ordenServicio: evaluacionData.orden_compra || '',
-        fechaEvaluacion: evaluacionData.fecha_evaluacion ? evaluacionData.fecha_evaluacion.split('T')[0] : '',
-        precioServicio: evaluacionData.precio_servicio || 0,
-        evaluadorResponsable: evaluadorPersona?.id.toString() || '',
-        descripcionServicio: evaluacionData.actividad || '',
-        linkServicioEjecutado: evaluacionData.link_servicio_ejecutado || '',
-        vaTerreno: evaluacionData.aplica_salida_terreno || false,
-        criterios: criteriosMapeados,
-        observaciones: evaluacionData.observacion || '',
-        especialidad: especialidadEncontrada?.id.toString() || '',
-        codigoProyecto: codigoProyectoFormateado,
-        nombreProyecto: evaluacionData.nombre_proyecto || '',
-        jefeProyecto: jefeProyectoPersona?.id.toString() || '',
-        gerenteProyecto: gerenteProyectoPersona?.id.toString() || '',
-      });
-
-      setEvaluacionId(evaluacionData.id);
-      
-      // Determinar si está en modo solo lectura
-      const readOnly = location.state?.readOnly === true;
-      setIsEditMode(!readOnly);
-      
-      // Guardar el estado inicial del formulario para detectar cambios
-      const formDataInicial = {
-        proveedorId: proveedorEncontrado?.id.toString() || '',
-        nombreContacto: evaluacionData.nombre_contacto || evaluacionData.correo_contacto?.split('@')[0] || '',
-        correoContacto: evaluacionData.correo_contacto || '',
-        ordenServicio: evaluacionData.orden_compra || '',
-        fechaEvaluacion: evaluacionData.fecha_evaluacion ? evaluacionData.fecha_evaluacion.split('T')[0] : '',
-        precioServicio: evaluacionData.precio_servicio || 0,
-        evaluadorResponsable: evaluadorPersona?.id.toString() || '',
-        descripcionServicio: evaluacionData.actividad || '',
-        linkServicioEjecutado: evaluacionData.link_servicio_ejecutado || '',
-        vaTerreno: evaluacionData.aplica_salida_terreno || false,
-        criterios: criteriosMapeados,
-        observaciones: evaluacionData.observacion || '',
-        especialidad: especialidadEncontrada?.id.toString() || '',
-        codigoProyecto: codigoProyectoFormateado,
-        nombreProyecto: evaluacionData.nombre_proyecto || '',
-        jefeProyecto: jefeProyectoPersona?.id.toString() || '',
-        gerenteProyecto: gerenteProyectoPersona?.id.toString() || '',
-      };
-      setInitialFormData(formDataInicial);
-      
-      console.log('✅ Formulario rellenado con datos de evaluación', { readOnly, isEditMode: !readOnly });
-    } else {
-      // Si no hay datos de evaluación, está en modo creación (siempre editable)
-      setIsEditMode(true);
-      setInitialFormData(null);
-    }
-  }, [location.state, proveedores, especialidades, personas]);
-
-  // Función para crear una nueva especialidad
-  const handleCrearEspecialidad = async () => {
-    if (!nuevaEspecialidadNombre.trim()) {
-      alert('Por favor ingrese un nombre para la especialidad');
-      return;
-    }
-
-    try {
-      setGuardandoEspecialidad(true);
-      const nuevaEspecialidad = await createEspecialidad(nuevaEspecialidadNombre.trim());
-      
-      // Agregar la nueva especialidad a la lista
-      setEspecialidades((prev) => {
-        const nuevasEspecialidades = [...prev, nuevaEspecialidad].sort((a, b) => 
-          a.nombre.localeCompare(b.nombre)
+        // Buscar el proveedor por nombre o RUT
+        const proveedorEncontrado = proveedores.find(
+          (p) =>
+            p.nombre_proveedor === evaluacionData.nombre_proveedor ||
+            p.nombre_proveedor === evaluacionData.nombre ||
+            p.rut === evaluacionData.rut
         );
-        return nuevasEspecialidades;
-      });
-      
-      // Seleccionar la nueva especialidad creada
-      setFormData((prev) => ({
-        ...prev,
-        especialidad: nuevaEspecialidad.id.toString(),
-      }));
-      
-      // Cerrar el modal y limpiar el campo
-      setShowModalEspecialidad(false);
-      setNuevaEspecialidadNombre('');
-    } catch (err: any) {
-      console.error('Error al crear especialidad:', err);
-      alert(`Error al crear la especialidad: ${err.message || 'Error desconocido'}`);
-    } finally {
-      setGuardandoEspecialidad(false);
-    }
-  };
+
+        let serviciosDisponibles: ProveedorServicioCatalogoNormalizado[] = [];
+        const rutProveedor = proveedorEncontrado?.rut?.trim();
+        if (rutProveedor) {
+          serviciosDisponibles = await loadServiciosCatalogoByRut(rutProveedor);
+        } else {
+          setServiciosCatalogo([]);
+          if (proveedorEncontrado) {
+            setServiciosCatalogoError('El proveedor seleccionado no tiene RUT configurado.');
+          } else {
+            setServiciosCatalogoError(null);
+          }
+        }
+
+        // Función helper para mapear texto de evaluación a valor del formulario
+        // Los textos en la BD son descriptivos (ej: "Sobresaliente", "Buena"), pero el formulario usa ALTO, MEDIO, BAJO, MUY_BAJO
+        const mapearTextoAValor = (
+          texto: string | null | undefined,
+          criterioId: string
+        ): 'ALTO' | 'MEDIO' | 'BAJO' | 'MUY_BAJO' | 'A' | 'B' | 'C' | null => {
+          if (!texto) return null;
+          const textoUpper = texto.toUpperCase();
+
+          // Mapear valores directos
+          if (['ALTO', 'MEDIO', 'BAJO', 'MUY_BAJO', 'A', 'B', 'C'].includes(textoUpper)) {
+            return textoUpper as 'ALTO' | 'MEDIO' | 'BAJO' | 'MUY_BAJO' | 'A' | 'B' | 'C';
+          }
+
+          // Obtener las opciones del criterio para mapear correctamente
+          const opciones = getCriterioOpciones(criterioId);
+
+          // Mapear textos descriptivos a valores según el criterio
+          if (
+            textoUpper.includes(opciones.ALTO.toUpperCase()) ||
+            textoUpper.includes('SOBRESALIENTE') ||
+            textoUpper.includes('EXCELENTE')
+          ) {
+            return 'ALTO';
+          }
+          if (
+            textoUpper.includes(opciones.MEDIO.toUpperCase()) ||
+            textoUpper.includes('BUENA') ||
+            textoUpper.includes('BUENO') ||
+            textoUpper.includes('ALTA')
+          ) {
+            return 'MEDIO';
+          }
+          if (
+            textoUpper.includes(opciones.BAJO.toUpperCase()) ||
+            textoUpper.includes('REGULAR') ||
+            textoUpper.includes('MEDIANA')
+          ) {
+            return 'BAJO';
+          }
+          if (
+            textoUpper.includes(opciones.MUY_BAJO.toUpperCase()) ||
+            textoUpper.includes('DEFICIENTE') ||
+            textoUpper.includes('NULA') ||
+            textoUpper.includes('MUY ELEVADO')
+          ) {
+            return 'MUY_BAJO';
+          }
+
+          return null;
+        };
+
+        // Mapear los criterios de evaluación con función inversa
+        const criteriosMapeados: CriterioEvaluacion[] = [
+          {
+            id: 'calidad',
+            nombre: 'Calidad',
+            peso: 52.2,
+            valor: mapearTextoAValor(evaluacionData.evaluacion_calidad, 'calidad'),
+          },
+          {
+            id: 'disponibilidad',
+            nombre: 'Disposición operativa y colaboración',
+            peso: 18.2,
+            valor: mapearTextoAValor(evaluacionData.evaluacion_disponibilidad, 'disponibilidad'),
+          },
+          {
+            id: 'cumplimiento',
+            nombre: 'Cumplimiento fecha de entrega',
+            peso: 13.7,
+            valor: mapearTextoAValor(evaluacionData.evaluacion_fecha_entrega, 'cumplimiento'),
+          },
+          {
+            id: 'precio',
+            nombre: 'Precio respecto de la competencia',
+            peso: 15.9,
+            valor: mapearTextoAValor(evaluacionData.evaluacion_precio, 'precio'),
+          },
+        ];
+
+        // Buscar IDs de personas por nombre completo
+        const jefeProyectoPersona = personas.find(
+          (p) => p.nombre_completo === evaluacionData.jefe_proyecto
+        );
+        const gerenteProyectoPersona = personas.find(
+          (p) => p.nombre_completo === evaluacionData.gerente_proyecto
+        );
+        const evaluadorPersona = personas.find((p) => p.nombre_completo === evaluacionData.evaluador);
+
+        const servicioPersistido = (evaluacionData.servicio || '').trim();
+        const especialidadPersistida = (evaluacionData.especialidad || '').trim();
+        let servicioSeleccionado = '';
+        let especialidadDerivada = especialidadPersistida;
+        let referenciaEspecialidadHistorica: string | null = null;
+
+        if (servicioPersistido) {
+          const servicioMatch = serviciosDisponibles.find(
+            (item) =>
+              normalizeComparableText(item.servicio) === normalizeComparableText(servicioPersistido)
+          );
+          if (servicioMatch) {
+            servicioSeleccionado = servicioMatch.servicio;
+            especialidadDerivada = servicioMatch.especialidadLabel || especialidadPersistida;
+          } else {
+            servicioSeleccionado = servicioPersistido;
+            referenciaEspecialidadHistorica = especialidadPersistida || null;
+          }
+        } else if (especialidadPersistida) {
+          const coincidenciasPorEspecialidad = serviciosDisponibles.filter(
+            (item) =>
+              normalizeComparableText(item.especialidadLabel) ===
+              normalizeComparableText(especialidadPersistida)
+          );
+
+          if (coincidenciasPorEspecialidad.length === 1) {
+            servicioSeleccionado = coincidenciasPorEspecialidad[0].servicio;
+            especialidadDerivada =
+              coincidenciasPorEspecialidad[0].especialidadLabel || especialidadPersistida;
+          } else {
+            referenciaEspecialidadHistorica = especialidadPersistida;
+          }
+        }
+
+        setEspecialidadHistoricaReferencia(referenciaEspecialidadHistorica);
+
+        // Formatear código de proyecto si existe
+        let codigoProyectoFormateado = evaluacionData.codigo_proyecto || '';
+        if (codigoProyectoFormateado && !codigoProyectoFormateado.startsWith('MY-')) {
+          // Si viene sin formato, intentar formatearlo
+          const match = codigoProyectoFormateado.match(/(\d{3})-(\d{4})/);
+          if (match) {
+            codigoProyectoFormateado = `MY-${match[1]}-${match[2]}`;
+          }
+        }
+
+        const nextFormData: EvaluacionData = {
+          proveedorId: proveedorEncontrado?.id.toString() || '',
+          nombreContacto:
+            evaluacionData.nombre_contacto || evaluacionData.correo_contacto?.split('@')[0] || '',
+          correoContacto: evaluacionData.correo_contacto || '',
+          ordenServicio: evaluacionData.orden_compra || '',
+          fechaEvaluacion: evaluacionData.fecha_evaluacion
+            ? evaluacionData.fecha_evaluacion.split('T')[0]
+            : '',
+          precioServicio: evaluacionData.precio_servicio || 0,
+          evaluadorResponsable: evaluadorPersona?.id.toString() || '',
+          descripcionServicio: evaluacionData.actividad || '',
+          linkServicioEjecutado: evaluacionData.link_servicio_ejecutado || '',
+          vaTerreno: evaluacionData.aplica_salida_terreno || false,
+          criterios: criteriosMapeados,
+          observaciones: evaluacionData.observacion || '',
+          servicio: servicioSeleccionado,
+          especialidad: especialidadDerivada || especialidadPersistida || '',
+          codigoProyecto: codigoProyectoFormateado,
+          nombreProyecto: evaluacionData.nombre_proyecto || '',
+          jefeProyecto: jefeProyectoPersona?.id.toString() || '',
+          gerenteProyecto: gerenteProyectoPersona?.id.toString() || '',
+        };
+
+        setFormData(nextFormData);
+        setEvaluacionId(evaluacionData.id);
+
+        // Determinar si está en modo solo lectura
+        const readOnly = location.state?.readOnly === true;
+        setIsEditMode(!readOnly);
+        setInitialFormData(nextFormData);
+
+        console.log('✅ Formulario rellenado con datos de evaluación', {
+          readOnly,
+          isEditMode: !readOnly,
+        });
+      } else {
+        // Si no hay datos de evaluación, está en modo creación (siempre editable)
+        setIsEditMode(true);
+        setInitialFormData(null);
+        setEspecialidadHistoricaReferencia(null);
+      }
+    };
+
+    void hydrateEvaluacion();
+  }, [location.state, proveedores, personas]);
 
   // Calcular evaluación total usando la nueva fórmula (excluyendo criterio terreno que no tiene peso)
   const evaluacionTotal = useMemo(() => {
@@ -543,6 +585,7 @@ const EvaluacionServicios: React.FC = () => {
       formData.linkServicioEjecutado !== initialFormData.linkServicioEjecutado ||
       formData.vaTerreno !== initialFormData.vaTerreno ||
       formData.observaciones !== initialFormData.observaciones ||
+      formData.servicio !== initialFormData.servicio ||
       formData.especialidad !== initialFormData.especialidad ||
       formData.codigoProyecto !== initialFormData.codigoProyecto ||
       formData.nombreProyecto !== initialFormData.nombreProyecto ||
@@ -563,25 +606,42 @@ const EvaluacionServicios: React.FC = () => {
     const { name, value, type } = e.target;
     const checked = (e.target as HTMLInputElement).checked;
     
-    // Si se cambia el proveedor, actualizar automáticamente solo el correo de contacto
+    // Si se cambia el proveedor, limpiar servicio/especialidad y cargar servicios por RUT
     if (name === 'proveedorId') {
       const proveedorSeleccionado = proveedores.find((p) => p.id.toString() === value);
+      const rutProveedor = proveedorSeleccionado?.rut?.trim();
+
+      setEspecialidadHistoricaReferencia(null);
+      setServiciosCatalogo([]);
+      setServiciosCatalogoError(null);
       setFormData((prev) => ({
         ...prev,
-        [name]: value,
+        proveedorId: value,
         correoContacto: proveedorSeleccionado?.correo_contacto || '',
+        servicio: '',
+        especialidad: '',
       }));
-    } else if (name === 'especialidad') {
-      // Si se selecciona "Otro", mostrar el modal
-      if (value === 'otro') {
-        setShowModalEspecialidad(true);
-      } else {
-        setFormData((prev) => ({
-          ...prev,
-          [name]: value,
-        }));
+
+      if (value && rutProveedor) {
+        void loadServiciosCatalogoByRut(rutProveedor);
+      } else if (value) {
+        setServiciosCatalogoError('El proveedor seleccionado no tiene RUT configurado.');
       }
-    } else if (name === 'vaTerreno') {
+      return;
+    }
+
+    if (name === 'servicio') {
+      const servicioSeleccionado = serviciosCatalogo.find((item) => item.servicio === value);
+      setEspecialidadHistoricaReferencia(null);
+      setFormData((prev) => ({
+        ...prev,
+        servicio: value,
+        especialidad: servicioSeleccionado?.especialidadLabel || '',
+      }));
+      return;
+    }
+
+    if (name === 'vaTerreno') {
       // Si se marca "va a terreno", agregar el criterio de terreno y ajustar pesos
       // Si se desmarca, remover el criterio de terreno y restaurar pesos
       setFormData((prev) => {
@@ -760,6 +820,12 @@ const EvaluacionServicios: React.FC = () => {
         return;
       }
 
+      if (!formData.servicio) {
+        alert('Por favor selecciona un servicio');
+        setLoading(false);
+        return;
+      }
+
       // Obtener los valores de los criterios
       const criterioCalidad = formData.criterios.find((c) => c.id === 'calidad');
       const criterioDisponibilidad = formData.criterios.find((c) => c.id === 'disponibilidad');
@@ -767,8 +833,21 @@ const EvaluacionServicios: React.FC = () => {
       const criterioPrecio = formData.criterios.find((c) => c.id === 'precio');
       const criterioTerreno = formData.criterios.find((c) => c.id === 'terreno');
 
-      // Obtener nombres de especialidad y personas seleccionadas
-      const especialidadSeleccionada = especialidades.find(e => e.id.toString() === formData.especialidad);
+      // Obtener servicio/especialidad derivada y personas seleccionadas
+      const servicioSeleccionado = serviciosCatalogo.find(
+        (item) =>
+          normalizeComparableText(item.servicio) === normalizeComparableText(formData.servicio)
+      );
+      const especialidadDerivada = servicioSeleccionado?.especialidades?.length
+        ? servicioSeleccionado.especialidades
+        : Array.from(
+            new Set(
+              extractEspecialidadesFromJsonb(formData.especialidad)
+                .flatMap((item) => item.split(','))
+                .map((item) => item.trim())
+                .filter(Boolean)
+            )
+          );
       const jefeProyectoSeleccionado = personas.find(p => p.id.toString() === formData.jefeProyecto);
       const gerenteProyectoSeleccionado = personas.find(p => p.id.toString() === formData.gerenteProyecto);
       const evaluadorSeleccionado = personas.find(p => p.id.toString() === formData.evaluadorResponsable);
@@ -807,7 +886,8 @@ const EvaluacionServicios: React.FC = () => {
       const evaluacionData: EvaluacionServiciosData = {
         nombre_proveedor: proveedorSeleccionado.nombre_proveedor,
         rut: proveedorSeleccionado.rut || null,
-        especialidad: especialidadSeleccionada?.nombre || null,
+        servicio: formData.servicio || null,
+        especialidad: especialidadDerivada.length > 0 ? especialidadDerivada : null,
         actividad: formData.descripcionServicio || null,
         orden_compra: formData.ordenServicio || null,
         codigo_proyecto: codigoProyectoNormalizado,
@@ -1351,8 +1431,7 @@ const EvaluacionServicios: React.FC = () => {
     // 1) Antecedentes
     drawSectionTitle('1', 'Antecedentes', 'Información general del servicio y proveedor');
 
-    // Obtener nombres de especialidad y personas seleccionadas para el PDF
-    const especialidadSeleccionadaPDF = especialidades.find(e => e.id.toString() === formData.especialidad);
+    // Obtener nombres de personas seleccionadas para el PDF
     const jefeProyectoSeleccionadoPDF = personas.find(p => p.id.toString() === formData.jefeProyecto);
     const gerenteProyectoSeleccionadoPDF = personas.find(p => p.id.toString() === formData.gerenteProyecto);
     const evaluadorSeleccionadoPDF = personas.find(p => p.id.toString() === formData.evaluadorResponsable);
@@ -1361,7 +1440,8 @@ const EvaluacionServicios: React.FC = () => {
       ['Proveedor', proveedorSeleccionado?.nombre_proveedor || 'No seleccionado'],
       ['Nombre de contacto', formData.nombreContacto || '—'],
       ['Correo de contacto', formData.correoContacto || '—'],
-      ['Especialidad', especialidadSeleccionadaPDF?.nombre || '—'],
+      ['Servicio', formData.servicio || '—'],
+      ['Especialidad', formData.especialidad || '—'],
       ['Código de proyecto', formData.codigoProyecto || '—'],
       ['Nombre de proyecto', formData.nombreProyecto || '—'],
       ['Jefe de proyecto', jefeProyectoSeleccionadoPDF?.nombre_completo || '—'],
@@ -1679,6 +1759,15 @@ const EvaluacionServicios: React.FC = () => {
     canDelete &&
     (isAdmin || isOwner);
 
+  const especialidadesDerivadasVisual = Array.from(
+    new Set(
+      (formData.especialidad || '')
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean)
+    )
+  );
+
   return (
     <div className="min-h-screen bg-[#f8fafc] p-4 lg:p-8">
       <div className="max-w-7xl mx-auto">
@@ -1856,28 +1945,51 @@ const EvaluacionServicios: React.FC = () => {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-[#111318] mb-2">
-                        Especialidad
+                        Servicio
                       </label>
-                      {loadingEspecialidades ? (
+                      {loadingServiciosCatalogo ? (
                         <div className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50">
                           <span className="text-sm text-gray-500">Cargando...</span>
                         </div>
                       ) : (
                         <select
-                          name="especialidad"
-                          value={formData.especialidad}
+                          name="servicio"
+                          value={formData.servicio}
                           onChange={handleChange}
-                          disabled={!isEditMode}
+                          disabled={
+                            !isEditMode ||
+                            !formData.proveedorId ||
+                            loadingServiciosCatalogo ||
+                            serviciosCatalogo.length === 0
+                          }
                           className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition-all bg-white disabled:bg-gray-100 disabled:cursor-not-allowed"
                         >
-                          <option value="">Seleccione una especialidad</option>
-                          {especialidades.map((esp) => (
-                            <option key={esp.id} value={esp.id.toString()}>
-                              {esp.nombre}
+                          <option value="">
+                            {!formData.proveedorId
+                              ? 'Seleccione primero un proveedor'
+                              : serviciosCatalogo.length === 0
+                                ? 'Sin servicios disponibles'
+                                : 'Seleccione un servicio'}
+                          </option>
+                          {formData.servicio &&
+                            !serviciosCatalogo.some(
+                              (item) =>
+                                normalizeComparableText(item.servicio) ===
+                                normalizeComparableText(formData.servicio)
+                            ) && (
+                              <option value={formData.servicio}>
+                                {`${formData.servicio} (histórico)`}
+                              </option>
+                            )}
+                          {serviciosCatalogo.map((item) => (
+                            <option key={item.servicio} value={item.servicio}>
+                              {item.servicio}
                             </option>
                           ))}
-                          <option value="otro">Otro</option>
                         </select>
+                      )}
+                      {serviciosCatalogoError && (
+                        <p className="text-xs text-amber-700 mt-1">{serviciosCatalogoError}</p>
                       )}
                     </div>
                     <div>
@@ -1898,6 +2010,35 @@ const EvaluacionServicios: React.FC = () => {
                         Formato: MY-XXX-YYYY (ej: MY-001-2024)
                       </p>
                     </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-[#111318] mb-2">
+                      Especialidad (derivada)
+                    </label>
+                    <div className="w-full min-h-[44px] px-3 py-2 border border-gray-300 rounded-lg bg-gray-50">
+                      {especialidadesDerivadasVisual.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {especialidadesDerivadasVisual.map((especialidad) => (
+                            <span
+                              key={especialidad}
+                              className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border border-gray-200 bg-white text-gray-700"
+                            >
+                              {especialidad}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-sm text-gray-500">
+                          Se completa automáticamente al seleccionar un servicio
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {especialidadHistoricaReferencia
+                        ? `Referencia histórica de especialidad: ${especialidadHistoricaReferencia}.`
+                        : 'Se completa automáticamente según el servicio seleccionado.'}
+                    </p>
                   </div>
 
                   <div>
@@ -2378,81 +2519,6 @@ const EvaluacionServicios: React.FC = () => {
           <p>© {new Date().getFullYear()} MyMALAB. Todos los derechos reservados.</p>
         </div>
       </div>
-
-      {/* Modal para crear nueva especialidad */}
-      {showModalEspecialidad && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-lg p-6 max-w-md w-full mx-4">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-bold text-[#111318]">Nueva Especialidad</h3>
-              <button
-                onClick={() => {
-                  setShowModalEspecialidad(false);
-                  setNuevaEspecialidadNombre('');
-                }}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
-                disabled={guardandoEspecialidad}
-              >
-                <span className="material-symbols-outlined text-2xl">close</span>
-              </button>
-            </div>
-            
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-[#111318] mb-2">
-                Nombre de la especialidad
-              </label>
-              <input
-                type="text"
-                value={nuevaEspecialidadNombre}
-                onChange={(e) => setNuevaEspecialidadNombre(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !guardandoEspecialidad) {
-                    handleCrearEspecialidad();
-                  }
-                }}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition-all"
-                placeholder="Ej: Hidrogeología"
-                disabled={guardandoEspecialidad}
-                autoFocus
-              />
-            </div>
-
-            <div className="flex gap-3 justify-end">
-              <button
-                onClick={() => {
-                  setShowModalEspecialidad(false);
-                  setNuevaEspecialidadNombre('');
-                  setFormData((prev) => ({
-                    ...prev,
-                    especialidad: '',
-                  }));
-                }}
-                className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-[#111318] font-medium"
-                disabled={guardandoEspecialidad}
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleCrearEspecialidad}
-                disabled={guardandoEspecialidad || !nuevaEspecialidadNombre.trim()}
-                className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-hover transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-              >
-                {guardandoEspecialidad ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    <span>Guardando...</span>
-                  </>
-                ) : (
-                  <>
-                    <span className="material-symbols-outlined text-lg">save</span>
-                    <span>Guardar</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Popup confirmación eliminación */}
       {showDeleteConfirm && evaluacionId && (
