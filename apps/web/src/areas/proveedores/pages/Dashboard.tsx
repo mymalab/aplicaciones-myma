@@ -322,6 +322,12 @@ const Dashboard: React.FC = () => {
             <h1 className="text-2xl lg:text-3xl font-bold text-[#111318] mb-4">
               {activeDashboard === 'proveedores' ? 'Dashboard de Proveedores' : 'Dashboard de Servicios'}
             </h1>
+            {activeDashboard === 'proveedores' && (
+              <p className="text-sm text-gray-600 mb-4 max-w-3xl">
+                Este dashboard te permite monitorear el estado y desempeño de los proveedores para facilitar el seguimiento y la toma de decisiones. 
+                Puedes navegar por el panel izquierdo o usar las opciones desplegables para revisar cada sección.
+              </p>
+            )}
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setActiveDashboard('proveedores')}

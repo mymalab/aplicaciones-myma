@@ -24,12 +24,13 @@ const AreaLayout: React.FC<AreaLayoutProps> = ({ children }) => {
   const [isFilterSidebarOpen, setIsFilterSidebarOpen] = useState(false);
 
   // Determinar la vista activa basada en la ruta
-  const getActiveView = (): 'list' | 'create' | 'fieldRequest' | 'reports' | 'dashboards' | 'dashboard' | 'actuales' | 'evaluacion' | 'evaluacion-2025' | 'evaluaciones-tabla' | 'catalogo-servicios' | 'catalogo-especialidades' | 'directorio' | 'experiencia-profesional' | 'formacion-academica' | 'organigrama' | 'curriculum' | 'edit' => {
+  const getActiveView = (): 'list' | 'create' | 'fieldRequest' | 'reports' | 'dashboards' | 'dashboard' | 'actuales' | 'evaluacion' | 'evaluacion-2025' | 'evaluaciones-tabla' | 'catalogo-servicios' | 'catalogo-especialidades' | 'directorio' | 'experiencia-profesional' | 'formacion-academica' | 'organigrama' | 'curriculum' | 'edit' | 'prompts' => {
     const path = location.pathname;
     if (path.includes('/reports')) return 'reports';
     if (path.includes('/dashboards')) return 'dashboards';
     if (path.includes('/field-request')) return 'fieldRequest';
     if (path.includes('/requests/create') || path.includes('/requests/edit')) return 'create';
+    if (path.includes('/prompts')) return 'prompts';
     if (path.includes('/evaluaciones-tabla')) return 'evaluaciones-tabla';
     if (path.includes('/catalogo-especialidades')) return 'catalogo-especialidades';
     if (path.includes('/catalogo-servicios')) return 'catalogo-servicios';

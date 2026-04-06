@@ -20,6 +20,8 @@ interface FiltrosPregunta {
   estado: 'Todos' | EstadoPregunta;
   complejidad: 'Todas' | ComplejidadPregunta;
   especialidad: 'Todas' | string;
+  encargado: 'Todos' | string;
+  temaPrincipal: 'Todos' | string;
 }
 
 const SORT_SEQUENCE: SortField[] = ['numero', 'estado', 'complejidad'];
@@ -31,6 +33,19 @@ const COMPLEJIDAD_RANK: Record<ComplejidadPregunta, number> = {
 };
 
 const MILLISECONDS_PER_DAY = 1000 * 60 * 60 * 24;
+const SIN_TEMAS_PRINCIPALES = 'Sin temas principales';
+
+const parseTemasPrincipales = (value: string): string[] => {
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === SIN_TEMAS_PRINCIPALES) {
+    return [];
+  }
+
+  return trimmed
+    .split(',')
+    .map((tema) => tema.trim())
+    .filter((tema) => tema.length > 0);
+};
 
 const parseFechaCompromisoDate = (value: string | null): Date | null => {
   if (!value) return null;
@@ -123,6 +138,8 @@ const GestionAdendaView: React.FC = () => {
     estado: 'Todos',
     complejidad: 'Todas',
     especialidad: 'Todas',
+    encargado: 'Todos',
+    temaPrincipal: 'Todos',
   });
   const [sortField, setSortField] = useState<SortField>('numero');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
@@ -186,6 +203,20 @@ const GestionAdendaView: React.FC = () => {
     return Array.from(new Set(all)).sort((a, b) => a.localeCompare(b));
   }, [preguntas]);
 
+  const encargadosDisponibles = useMemo(() => {
+    const all = preguntas
+      .map((pregunta) => (pregunta.encargado_nombre || '').trim())
+      .filter((nombre) => nombre.length > 0);
+
+    return Array.from(new Set(all)).sort((a, b) => a.localeCompare(b));
+  }, [preguntas]);
+
+  const temasPrincipalesDisponibles = useMemo(() => {
+    const all = preguntas.flatMap((pregunta) => parseTemasPrincipales(pregunta.temas_principales_texto));
+
+    return Array.from(new Set(all)).sort((a, b) => a.localeCompare(b));
+  }, [preguntas]);
+
   const filteredPreguntas = useMemo(() => {
     const searchLower = searchTerm.trim().toLowerCase();
 
@@ -193,7 +224,9 @@ const GestionAdendaView: React.FC = () => {
       const estadoUi = normalizeEstadoPregunta(pregunta.estado);
       const complejidadUi = normalizeComplejidadPregunta(pregunta.complejidad);
       const especialidadUi = pregunta.especialidad_nombre || 'Sin especialidad';
-      const encargadoUi = pregunta.encargado_nombre || 'Sin encargado';
+      const encargadoAsignado = (pregunta.encargado_nombre || '').trim();
+      const temasPrincipalesList = parseTemasPrincipales(pregunta.temas_principales_texto);
+      const encargadoUi = encargadoAsignado || 'Sin encargado';
       const estrategiaUi = (pregunta.estrategia || '').trim();
       const respuestaIaUi = (pregunta.respuesta_ia || '').trim();
       const fechaCompromisoUi = formatFechaCompromiso(pregunta.fecha_compromiso);
@@ -221,8 +254,19 @@ const GestionAdendaView: React.FC = () => {
         filtros.complejidad === 'Todas' || complejidadUi === filtros.complejidad;
       const matchEspecialidad =
         filtros.especialidad === 'Todas' || especialidadUi === filtros.especialidad;
+      const matchEncargado =
+        filtros.encargado === 'Todos' || encargadoAsignado === filtros.encargado;
+      const matchTemaPrincipal =
+        filtros.temaPrincipal === 'Todos' || temasPrincipalesList.includes(filtros.temaPrincipal);
 
-      return matchSearch && matchEstado && matchComplejidad && matchEspecialidad;
+      return (
+        matchSearch &&
+        matchEstado &&
+        matchComplejidad &&
+        matchEspecialidad &&
+        matchEncargado &&
+        matchTemaPrincipal
+      );
     });
   }, [preguntas, searchTerm, filtros]);
 
@@ -301,7 +345,13 @@ const GestionAdendaView: React.FC = () => {
   };
 
   const handleClearFilters = () => {
-    setFiltros({ estado: 'Todos', complejidad: 'Todas', especialidad: 'Todas' });
+    setFiltros({
+      estado: 'Todos',
+      complejidad: 'Todas',
+      especialidad: 'Todas',
+      encargado: 'Todos',
+      temaPrincipal: 'Todos',
+    });
   };
 
   const getEstadoColor = (estado: EstadoPregunta) => {
@@ -561,7 +611,7 @@ const GestionAdendaView: React.FC = () => {
         <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-200 flex flex-col gap-3">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
+              <div className="flex items-center flex-wrap gap-3">
                 <button
                   onClick={() => setShowFilters((prev) => !prev)}
                   className="flex items-center gap-2 px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-sm"
@@ -577,64 +627,135 @@ const GestionAdendaView: React.FC = () => {
                   <span>Ordenar: {sortField}</span>
                   <span className="text-xs text-gray-500 uppercase">{sortDirection}</span>
                 </button>
+                <button
+                  onClick={handleClearFilters}
+                  className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm hover:bg-gray-50"
+                >
+                  Limpiar filtros
+                </button>
               </div>
             </div>
 
             {showFilters && (
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-3 pt-2">
-                <select
-                  value={filtros.estado}
-                  onChange={(event) =>
-                    setFiltros((prev) => ({
-                      ...prev,
-                      estado: event.target.value as FiltrosPregunta['estado'],
-                    }))
-                  }
-                  className="px-3 py-2 border border-gray-200 rounded-lg text-sm"
-                >
-                  <option value="Todos">Estado: Todos</option>
-                  <option value="En revisión">En revisión</option>
-                  <option value="Pendientes">Pendientes</option>
-                  <option value="Completadas">Completadas</option>
-                </select>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5 gap-3 pt-2">
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="filtro-estado" className="text-xs font-medium text-gray-600">
+                    Estado
+                  </label>
+                  <select
+                    id="filtro-estado"
+                    value={filtros.estado}
+                    aria-label="Filtrar por estado"
+                    onChange={(event) =>
+                      setFiltros((prev) => ({
+                        ...prev,
+                        estado: event.target.value as FiltrosPregunta['estado'],
+                      }))
+                    }
+                    className="px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                  >
+                    <option value="Todos">Todos</option>
+                    <option value="En revisión">En revisión</option>
+                    <option value="Pendientes">Pendientes</option>
+                    <option value="Completadas">Completadas</option>
+                  </select>
+                </div>
 
-                <select
-                  value={filtros.complejidad}
-                  onChange={(event) =>
-                    setFiltros((prev) => ({
-                      ...prev,
-                      complejidad: event.target.value as FiltrosPregunta['complejidad'],
-                    }))
-                  }
-                  className="px-3 py-2 border border-gray-200 rounded-lg text-sm"
-                >
-                  <option value="Todas">Complejidad: Todas</option>
-                  <option value="Baja">Baja</option>
-                  <option value="Media">Media</option>
-                  <option value="Alta">Alta</option>
-                </select>
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="filtro-complejidad" className="text-xs font-medium text-gray-600">
+                    Complejidad
+                  </label>
+                  <select
+                    id="filtro-complejidad"
+                    value={filtros.complejidad}
+                    aria-label="Filtrar por complejidad"
+                    onChange={(event) =>
+                      setFiltros((prev) => ({
+                        ...prev,
+                        complejidad: event.target.value as FiltrosPregunta['complejidad'],
+                      }))
+                    }
+                    className="px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                  >
+                    <option value="Todas">Todas</option>
+                    <option value="Baja">Baja</option>
+                    <option value="Media">Media</option>
+                    <option value="Alta">Alta</option>
+                  </select>
+                </div>
 
-                <select
-                  value={filtros.especialidad}
-                  onChange={(event) =>
-                    setFiltros((prev) => ({ ...prev, especialidad: event.target.value }))
-                  }
-                  className="px-3 py-2 border border-gray-200 rounded-lg text-sm"
-                >
-                  <option value="Todas">Especialidad: Todas</option>
-                  {especialidadesDisponibles.map((especialidad) => (
-                    <option key={especialidad} value={especialidad}>
-                      {especialidad}
-                    </option>
-                  ))}
-                </select>
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="filtro-especialidad" className="text-xs font-medium text-gray-600">
+                    Especialidad
+                  </label>
+                  <select
+                    id="filtro-especialidad"
+                    value={filtros.especialidad}
+                    aria-label="Filtrar por especialidad"
+                    onChange={(event) =>
+                      setFiltros((prev) => ({ ...prev, especialidad: event.target.value }))
+                    }
+                    className="px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                  >
+                    <option value="Todas">Todas</option>
+                    {especialidadesDisponibles.map((especialidad) => (
+                      <option key={especialidad} value={especialidad}>
+                        {especialidad}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-                <button
-                  onClick={handleClearFilters}
-                  className="px-3 py-2 border border-gray-200 rounded-lg text-sm hover:bg-gray-50"
-                >
-                  Limpiar filtros
-                </button>
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="filtro-encargado" className="text-xs font-medium text-gray-600">
+                    Encargado
+                  </label>
+                  <select
+                    id="filtro-encargado"
+                    value={filtros.encargado}
+                    aria-label="Filtrar por encargado"
+                    onChange={(event) =>
+                      setFiltros((prev) => ({
+                        ...prev,
+                        encargado: event.target.value,
+                      }))
+                    }
+                    className="px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                  >
+                    <option value="Todos">Todos</option>
+                    {encargadosDisponibles.map((encargado) => (
+                      <option key={encargado} value={encargado}>
+                        {encargado}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="filtro-tema-principal" className="text-xs font-medium text-gray-600">
+                    Tema principal
+                  </label>
+                  <select
+                    id="filtro-tema-principal"
+                    value={filtros.temaPrincipal}
+                    aria-label="Filtrar por tema principal"
+                    onChange={(event) =>
+                      setFiltros((prev) => ({
+                        ...prev,
+                        temaPrincipal: event.target.value,
+                      }))
+                    }
+                    className="px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                  >
+                    <option value="Todos">Todos</option>
+                    {temasPrincipalesDisponibles.map((tema) => (
+                      <option key={tema} value={tema}>
+                        {tema}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
               </div>
             )}
           </div>

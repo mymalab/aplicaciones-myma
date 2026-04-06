@@ -1,4 +1,4 @@
-﻿import { supabase } from '@shared/api-client/supabase';
+import { supabase } from '@shared/api-client/supabase';
 import type {
   CatalogoEspecialidad,
   CatalogoPersona,
@@ -9,6 +9,7 @@ import type {
   PreguntaGestion,
   UpdatePreguntaPayload,
 } from '../types';
+import { fetchLatestActivePromptByName } from './promptCatalogService';
 
 interface PreguntasCatalogos {
   personas: CatalogoPersona[];
@@ -27,6 +28,7 @@ interface PreguntaRow {
   complejidad: string | null;
   estrategia?: string | null;
   respuesta_ia?: string | null;
+  respuesta_experto_ia?: string | null;
   fecha_compromiso?: string | null;
   created_at: string | null;
   pregunta_media?: unknown;
@@ -49,7 +51,20 @@ interface PreguntaReporteRow {
 
 interface NotebookChatResponse {
   answer?: string | null;
-  detail?: string | string[] | null;
+  detail?:
+    | string
+    | string[]
+    | {
+        message?: string | null;
+        error_type?: string | null;
+        next_step?: string | null;
+      }
+    | Array<{
+        message?: string | null;
+        msg?: string | null;
+        type?: string | null;
+      }>
+    | null;
   error?: string | null;
   message?: string | null;
 }
@@ -74,9 +89,13 @@ const ADJUNTOS_SELECT =
 const PREGUNTAS_SELECT_CORE =
   'id,adenda_id,numero,capitulo,texto,temas_principales,temas_secundarios,estado,complejidad,created_at';
 const PREGUNTAS_SELECT_WITH_TEXT_FIELDS =
+  `${PREGUNTAS_SELECT_CORE},estrategia,respuesta_ia,respuesta_experto_ia`;
+const PREGUNTAS_SELECT_WITH_TEXT_FIELDS_NO_EXPERTO =
   `${PREGUNTAS_SELECT_CORE},estrategia,respuesta_ia`;
 const PREGUNTAS_SELECT_WITH_ASSIGNMENTS =
   `${PREGUNTAS_SELECT_WITH_TEXT_FIELDS},encargado_persona_id,especialidad_id,fecha_compromiso,pregunta_media(${ADJUNTOS_SELECT})`;
+const PREGUNTAS_SELECT_WITH_ASSIGNMENTS_NO_EXPERTO =
+  `${PREGUNTAS_SELECT_WITH_TEXT_FIELDS_NO_EXPERTO},encargado_persona_id,especialidad_id,fecha_compromiso,pregunta_media(${ADJUNTOS_SELECT})`;
 const PREGUNTAS_SELECT_LEGACY_WITH_FECHA =
   `${PREGUNTAS_SELECT_CORE},fecha_compromiso,pregunta_media(${ADJUNTOS_SELECT})`;
 const PREGUNTAS_SELECT_LEGACY = `${PREGUNTAS_SELECT_CORE},pregunta_media(${ADJUNTOS_SELECT})`;
@@ -126,10 +145,40 @@ const getNotebookChatErrorMessage = (response: NotebookChatResponse | null): str
 
   if (Array.isArray(response.detail)) {
     const detailMessage = response.detail
-      .map((item) => (typeof item === 'string' ? item.trim() : ''))
+      .map((item) => {
+        if (typeof item === 'string') {
+          return item.trim();
+        }
+        if (isRecord(item)) {
+          if (typeof item.message === 'string' && item.message.trim()) {
+            return item.message.trim();
+          }
+          if (typeof item.msg === 'string' && item.msg.trim()) {
+            return item.msg.trim();
+          }
+        }
+        return '';
+      })
       .find(Boolean);
     if (detailMessage) {
       return detailMessage;
+    }
+  }
+
+  if (isRecord(response.detail)) {
+    const message =
+      typeof response.detail.message === 'string' ? response.detail.message.trim() : '';
+    const nextStep =
+      typeof response.detail.next_step === 'string' ? response.detail.next_step.trim() : '';
+
+    if (message && nextStep) {
+      return `${message} ${nextStep}`;
+    }
+    if (message) {
+      return message;
+    }
+    if (nextStep) {
+      return nextStep;
     }
   }
 
@@ -156,13 +205,27 @@ const isMissingGestionColumnsError = (error: { message?: string | null; details?
     message.includes('especialidad_id') ||
     message.includes('estrategia') ||
     message.includes('respuesta_ia') ||
+    message.includes('respuesta_experto_ia') ||
     message.includes('fecha_compromiso') ||
     message.includes('column preguntas.encargado_persona_id does not exist') ||
     message.includes('column preguntas.especialidad_id does not exist') ||
     message.includes('column preguntas.estrategia does not exist') ||
-    message.includes('column preguntas.respuesta_ia does not exist')
+    message.includes('column preguntas.respuesta_ia does not exist') ||
+    message.includes('column preguntas.respuesta_experto_ia does not exist')
     ||
     message.includes('column preguntas.fecha_compromiso does not exist')
+  );
+};
+
+const isMissingRespuestaExpertoIaColumnError = (error: {
+  message?: string | null;
+  details?: string | null;
+}): boolean => {
+  const message = `${error.message || ''} ${error.details || ''}`.toLowerCase();
+  return (
+    message.includes('respuesta_experto_ia') ||
+    message.includes('column preguntas.respuesta_experto_ia does not exist') ||
+    message.includes('column "respuesta_experto_ia" does not exist')
   );
 };
 
@@ -380,6 +443,8 @@ const mapPreguntaRow = (
     especialidad_nombre: especialidadId ? especialidadesMap.get(especialidadId) || null : null,
     estrategia: typeof row.estrategia === 'string' ? row.estrategia : null,
     respuesta_ia: typeof row.respuesta_ia === 'string' ? row.respuesta_ia : null,
+    respuesta_experto_ia:
+      typeof row.respuesta_experto_ia === 'string' ? row.respuesta_experto_ia : null,
     fecha_compromiso: typeof row.fecha_compromiso === 'string' ? row.fecha_compromiso : null,
     adjuntos,
     adjuntos_resumen: buildAdjuntosResumen(adjuntos),
@@ -414,8 +479,28 @@ const selectPreguntasByAdendaId = async (adendaId: number): Promise<PreguntaRow[
     return (data || []) as unknown as PreguntaRow[];
   }
 
-  if (!isMissingGestionColumnsError(error)) {
-    throw error;
+  let fallbackError = error;
+
+  if (isMissingRespuestaExpertoIaColumnError(error)) {
+    const {
+      data: dataWithoutExperto,
+      error: errorWithoutExperto,
+    } = await supabase
+      .from('preguntas')
+      .select(PREGUNTAS_SELECT_WITH_ASSIGNMENTS_NO_EXPERTO)
+      .eq('adenda_id', adendaId)
+      .order('numero', { ascending: true })
+      .order('id', { ascending: true });
+
+    if (!errorWithoutExperto) {
+      return (dataWithoutExperto || []) as unknown as PreguntaRow[];
+    }
+
+    fallbackError = errorWithoutExperto;
+  }
+
+  if (!isMissingGestionColumnsError(fallbackError)) {
+    throw fallbackError;
   }
 
   const { data: legacyData, error: legacyError } = await supabase
@@ -458,8 +543,27 @@ const selectPreguntaById = async (preguntaId: number): Promise<PreguntaRow | nul
     return (data || null) as unknown as PreguntaRow | null;
   }
 
-  if (!isMissingGestionColumnsError(error)) {
-    throw error;
+  let fallbackError = error;
+
+  if (isMissingRespuestaExpertoIaColumnError(error)) {
+    const {
+      data: dataWithoutExperto,
+      error: errorWithoutExperto,
+    } = await supabase
+      .from('preguntas')
+      .select(PREGUNTAS_SELECT_WITH_ASSIGNMENTS_NO_EXPERTO)
+      .eq('id', preguntaId)
+      .maybeSingle();
+
+    if (!errorWithoutExperto) {
+      return (dataWithoutExperto || null) as unknown as PreguntaRow | null;
+    }
+
+    fallbackError = errorWithoutExperto;
+  }
+
+  if (!isMissingGestionColumnsError(fallbackError)) {
+    throw fallbackError;
   }
 
   const { data: legacyData, error: legacyError } = await supabase
@@ -744,6 +848,9 @@ export const updatePreguntaById = async (
   if (Object.prototype.hasOwnProperty.call(payload, 'respuesta_ia')) {
     updatePayload.respuesta_ia = payload.respuesta_ia ?? null;
   }
+  if (Object.prototype.hasOwnProperty.call(payload, 'respuesta_experto_ia')) {
+    updatePayload.respuesta_experto_ia = payload.respuesta_experto_ia ?? null;
+  }
   if (Object.prototype.hasOwnProperty.call(payload, 'fecha_compromiso')) {
     updatePayload.fecha_compromiso = payload.fecha_compromiso ?? null;
   }
@@ -760,7 +867,7 @@ export const updatePreguntaById = async (
   if (error) {
     if (isMissingGestionColumnsError(error)) {
       throw new Error(
-        'Faltan columnas de gestión en la tabla preguntas. Ejecuta la migración sql/20260308_agregar_campos_gestion_preguntas.sql.'
+        'Faltan columnas de gestión en la tabla preguntas. Ejecuta las migraciones sql/20260308_agregar_campos_gestion_preguntas.sql y/o sql/20260402_agregar_columna_respuesta_experto_ia_preguntas.sql.'
       );
     }
     throw error;
@@ -791,16 +898,105 @@ const getNotebookIdByAdendaId = async (adendaId: number): Promise<string> => {
 };
 
 const buildNotebookPromptCandidates = (prompt: string) => [
-  { message: prompt },
   { question: prompt },
   { prompt },
+  { message: prompt },
   { query: prompt },
   { input: prompt },
 ];
 
+const ESTRATEGIA_PROMPT_CATALOGO_NOMBRE = 'Generador de estructura de respuesta';
+
+const safeTrim = (value: unknown): string => (typeof value === 'string' ? value.trim() : '');
+
+export interface EstrategiaPromptContext {
+  promptNombreBase: string;
+  promptVersion: number | null;
+  promptCatalogo: string | null;
+  promptCompleto: string;
+  observacion: string;
+}
+
+export interface BuildEstrategiaPromptOptions {
+  promptCatalogoOverride?: string | null;
+  promptNombreOverride?: string | null;
+  promptVersionOverride?: number | null;
+}
+
+const buildEstrategiaPromptBase = (entrada: string): string => {
+  return entrada.trim();
+};
+
+export const buildEstrategiaPromptContext = async (
+  observacion: string,
+  options: BuildEstrategiaPromptOptions = {}
+): Promise<EstrategiaPromptContext> => {
+  const observationPrompt = observacion.trim();
+  if (!observationPrompt) {
+    throw new Error('La pregunta no contiene texto para armar el prompt.');
+  }
+
+  const promptCatalogoOverride = safeTrim(options.promptCatalogoOverride);
+  if (promptCatalogoOverride) {
+    const promptBase = buildEstrategiaPromptBase(observationPrompt);
+    const promptNombreOverride = safeTrim(options.promptNombreOverride);
+
+    return {
+      promptNombreBase: promptNombreOverride || ESTRATEGIA_PROMPT_CATALOGO_NOMBRE,
+      promptVersion:
+        typeof options.promptVersionOverride === 'number' &&
+        Number.isFinite(options.promptVersionOverride)
+          ? Math.floor(options.promptVersionOverride)
+          : null,
+      promptCatalogo: promptCatalogoOverride,
+      promptCompleto: [promptCatalogoOverride, '', promptBase].join('\n'),
+      observacion: observationPrompt,
+    };
+  }
+
+  let promptCatalogoItem: Awaited<
+    ReturnType<typeof fetchLatestActivePromptByName>
+  > = null;
+
+  try {
+    promptCatalogoItem = await fetchLatestActivePromptByName(
+      ESTRATEGIA_PROMPT_CATALOGO_NOMBRE
+    );
+  } catch (error) {
+    console.warn('No se pudo cargar el prompt de catalogo para estrategia:', error);
+    promptCatalogoItem = null;
+  }
+
+  const promptCatalogo = safeTrim(promptCatalogoItem?.prompt);
+  const promptBase = buildEstrategiaPromptBase(observationPrompt);
+  const promptCompleto = promptCatalogo
+    ? [promptCatalogo, '', promptBase].join('\n')
+    : promptBase;
+
+  return {
+    promptNombreBase: ESTRATEGIA_PROMPT_CATALOGO_NOMBRE,
+    promptVersion:
+      promptCatalogoItem && Number.isFinite(promptCatalogoItem.version)
+        ? promptCatalogoItem.version
+        : null,
+    promptCatalogo: promptCatalogo || null,
+    promptCompleto,
+    observacion: observationPrompt,
+  };
+};
+
+export const buildEstrategiaPromptPreview = async (
+  observacion: string,
+  options: BuildEstrategiaPromptOptions = {}
+): Promise<string> => {
+  const context = await buildEstrategiaPromptContext(observacion, options);
+  return context.promptCompleto;
+};
+
 export const generateEstrategiaFromNotebookChat = async (
   adendaId: number,
-  prompt: string
+  prompt: string,
+  options: BuildEstrategiaPromptOptions = {}
 ): Promise<string> => {
   if (!Number.isFinite(adendaId)) {
     throw new Error('No se recibió un identificador de adenda válido.');
@@ -811,13 +1007,8 @@ export const generateEstrategiaFromNotebookChat = async (
     throw new Error('La pregunta no contiene texto para enviar al asistente IA.');
   }
 
-  const normalizedPrompt = [
-    'Responde en espanol tecnico y en texto plano.',
-    'No uses markdown (sin #, sin **, sin * como vinetas markdown).',
-    'Mantén secciones claras y legibles para pegar en un textarea.',
-    '',
-    `Observacion: ${observationPrompt}`,
-  ].join('\n');
+  const promptContext = await buildEstrategiaPromptContext(observationPrompt, options);
+  const normalizedPrompt = promptContext.promptCompleto;
 
   if (!ADENDAS_NOTEBOOK_CHAT_BASE_URL) {
     throw new Error('No hay baseUrl configurada para el chat de notebooks.');
@@ -853,11 +1044,27 @@ export const generateEstrategiaFromNotebookChat = async (
 
       if (!response.ok) {
         const apiMessage = getNotebookChatErrorMessage(parsedBody);
-        errors.push(
-          apiMessage
-            ? `${response.status}: ${apiMessage}`
-            : `${response.status}: la API no pudo procesar la solicitud.`
-        );
+        const statusMessage = apiMessage
+          ? `${response.status}: ${apiMessage}`
+          : `${response.status}: la API no pudo procesar la solicitud.`;
+
+        if (response.status === 401) {
+          throw new Error(
+            apiMessage
+              ? `401: ${apiMessage}`
+              : "401: La sesion de NotebookLM no es valida. Ejecuta '.\\.venv\\Scripts\\notebooklm.exe login --browser msedge'."
+          );
+        }
+        if (response.status === 403) {
+          throw new Error(statusMessage);
+        }
+
+        errors.push(statusMessage);
+
+        if (response.status === 422) {
+          continue;
+        }
+
         continue;
       }
 
@@ -872,11 +1079,17 @@ export const generateEstrategiaFromNotebookChat = async (
 
       errors.push('La API respondió correctamente, pero no entregó el campo answer.');
     } catch (error: any) {
-      errors.push(error?.message || 'Error de red al llamar la API de chat.');
+      const errorMessage = error?.message || 'Error de red al llamar la API de chat.';
+      if (
+        typeof errorMessage === 'string' &&
+        (errorMessage.startsWith('401:') || errorMessage.startsWith('403:'))
+      ) {
+        throw new Error(errorMessage);
+      }
+      errors.push(errorMessage);
     }
   }
 
   const firstError = errors[0] || 'No fue posible obtener respuesta desde la API de chat.';
   throw new Error(`No se pudo generar la estrategia con IA. ${firstError}`);
 };
-

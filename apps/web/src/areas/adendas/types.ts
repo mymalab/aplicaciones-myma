@@ -85,6 +85,7 @@ export interface PreguntaGestion {
   especialidad_nombre: string | null;
   estrategia: string | null;
   respuesta_ia: string | null;
+  respuesta_experto_ia: string | null;
   fecha_compromiso: string | null;
   adjuntos: PreguntaAdjunto[];
   adjuntos_resumen: PreguntaAdjuntosResumen;
@@ -98,6 +99,7 @@ export interface UpdatePreguntaPayload {
   especialidad_id?: number | null;
   estrategia?: string | null;
   respuesta_ia?: string | null;
+  respuesta_experto_ia?: string | null;
   fecha_compromiso?: string | null;
 }
 

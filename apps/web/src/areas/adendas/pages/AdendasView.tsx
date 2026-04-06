@@ -213,7 +213,15 @@ const AdendasView: React.FC = () => {
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center gap-2">
                           <span className="material-symbols-outlined text-gray-400 text-sm">description</span>
-                          <div className="text-sm text-[#111318]">{adenda.nombre || '-'}</div>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRowClick(adenda);
+                            }}
+                            className="text-left text-sm text-[#111318] hover:text-primary transition-colors"
+                          >
+                            {adenda.nombre || '-'}
+                          </button>
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">

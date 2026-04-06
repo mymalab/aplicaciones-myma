@@ -6,6 +6,7 @@ import AdendaDetailView from './pages/AdendaDetailView';
 import GestionAdendaView from './pages/GestionAdendaView';
 import PreguntaDetailView from './pages/PreguntaDetailView';
 import ReporteView from './pages/ReporteView';
+import PromptsCatalogoGestion from './pages/PromptsCatalogoGestion';
 
 /**
  * Componente que maneja las rutas del área de Adendas
@@ -20,6 +21,7 @@ const AdendasRoutes: React.FC = () => {
       <Route path="gestion/:codigoMyma" element={<GestionAdendaView />} />
       <Route path="gestion/:codigoMyma/pregunta/:preguntaId" element={<PreguntaDetailView />} />
       <Route path="reporte" element={<ReporteView />} />
+      <Route path="prompts" element={<PromptsCatalogoGestion />} />
       <Route path="/" element={<Navigate to="" replace />} />
       <Route path="*" element={<Navigate to="" replace />} />
     </Routes>
@@ -27,4 +29,3 @@ const AdendasRoutes: React.FC = () => {
 };
 
 export default AdendasRoutes;
-

@@ -21,3 +21,5 @@ export const adendasPregunta = (codigoMyma: string, preguntaId: string) =>
   )}/pregunta/${encodeURIComponent(preguntaId)}`;
 
 export const adendasReporte = () => `${ADENDAS_BASE_PATH}/reporte`;
+
+export const adendasPrompts = () => `${ADENDAS_BASE_PATH}/prompts`;

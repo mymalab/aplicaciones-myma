@@ -12,12 +12,12 @@ import { fetchPendingAccessRequests } from '@shared/rbac/accessRequestsService';
 import AccessRequestsModal from '@shared/rbac/AccessRequestsModal';
 import SidebarSettingsButton from '@shared/layout/SidebarSettingsButton';
 import SidebarSettingsModal from '@shared/layout/SidebarSettingsModal';
-import { adendasList, adendasReporte } from '../utils/routes';
+import { adendasList, adendasPrompts, adendasReporte } from '../utils/routes';
 
 interface SidebarProps {
   isOpen: boolean;
   onClose: () => void;
-  activeView?: 'list' | 'create' | 'edit';
+  activeView?: 'list' | 'create' | 'edit' | 'prompts';
   hideOnDesktop?: boolean;
 }
 
@@ -35,13 +35,19 @@ const AdendasSidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activeView, h
   const menuRef = useRef<HTMLDivElement>(null);
 
   const isReporteRoute = location.pathname.includes('/reporte');
+  const isPromptsRoute = location.pathname.includes('/prompts');
   const isListRoute =
     location.pathname.includes('/adendas') &&
     !location.pathname.includes('/create') &&
     !location.pathname.includes('/edit') &&
-    !isReporteRoute;
-  const isListActive = !isReporteRoute && (activeView === 'list' || (!activeView && isListRoute));
+    !isReporteRoute &&
+    !isPromptsRoute;
+  const isListActive =
+    !isReporteRoute &&
+    !isPromptsRoute &&
+    (activeView === 'list' || (!activeView && isListRoute));
   const isReporteActive = isReporteRoute;
+  const isPromptsActive = isPromptsRoute || activeView === 'prompts';
 
   // Obtener información del usuario y verificar si es admin del módulo de Adendas
   useEffect(() => {
@@ -132,6 +138,11 @@ const AdendasSidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activeView, h
 
   const handleReporteClick = () => {
     navigate(adendasReporte());
+    onClose();
+  };
+
+  const handlePromptsClick = () => {
+    navigate(adendasPrompts());
     onClose();
   };
 
@@ -240,6 +251,34 @@ const AdendasSidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activeView, h
                   }`}
                 >
                   Reporte
+                </span>
+              </button>
+
+              {/* Prompts */}
+              <button
+                onClick={handlePromptsClick}
+                className={`group flex items-center justify-center p-3 rounded-lg w-full aspect-square transition-colors relative ${
+                  isPromptsActive
+                    ? 'bg-primary text-white hover:bg-primary-hover'
+                    : 'text-[#616f89] hover:bg-gray-100'
+                }`}
+                title="Gestion de prompts"
+              >
+                <span
+                  className={`material-symbols-outlined text-2xl pointer-events-none ${
+                    isPromptsActive ? 'fill' : ''
+                  }`}
+                >
+                  psychology
+                </span>
+                <span
+                  className={`absolute left-full ml-3 px-2 py-1 text-xs rounded whitespace-nowrap pointer-events-none transition-opacity duration-200 ${
+                    isPromptsActive
+                      ? 'bg-primary text-white opacity-0 group-hover:opacity-100'
+                      : 'bg-gray-900 text-white opacity-0 group-hover:opacity-100'
+                  }`}
+                >
+                  Prompts IA
                 </span>
               </button>
 
