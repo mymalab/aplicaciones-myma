@@ -2,7 +2,13 @@
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Proveedor, TipoProveedor, Especialidad, Clasificacion } from '../types';
 import { AreaId } from '@contracts/areas';
-import { fetchProveedores, ProveedorResponse, fetchEspecialidadesPriorizadasByRuts, fetchEspecialidades } from '../services/proveedoresService';
+import {
+  fetchProveedores,
+  ProveedorResponse,
+  fetchEspecialidadesPriorizadasByRuts,
+  fetchEspecialidades,
+  fetchUltimaActualizacionServiciosByRuts,
+} from '../services/proveedoresService';
 import { usePermissions } from '@shared/rbac/usePermissions';
 import { normalizeSearchText } from '../utils/search';
 
@@ -25,6 +31,7 @@ interface ProveedorConContacto extends Proveedor {
   contactoCargo: string;
   contactoSinValidar: boolean;
   informacionContacto: InformacionContactoProveedor;
+  ultimaActualizacion: string | null;
 }
 
 const toPlainObject = (value: unknown): Record<string, unknown> => {
@@ -77,6 +84,50 @@ const displayOrPlaceholder = (value: string): string => {
   return trimmed === '' ? 'Sin definir' : trimmed;
 };
 
+const parseValidDate = (value: string | null | undefined): Date | null => {
+  if (!value) {
+    return null;
+  }
+
+  const rawValue = value.trim();
+  if (!rawValue) {
+    return null;
+  }
+
+  const candidates = [
+    rawValue,
+    rawValue.replace(' ', 'T'),
+    rawValue.replace(/(\.\d{3})\d+/, '$1'),
+    rawValue.replace(/(\.\d{3})\d+/, '$1').replace(' ', 'T'),
+  ];
+
+  for (const candidate of candidates) {
+    const parsed = new Date(candidate);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed;
+    }
+  }
+
+  return null;
+};
+
+const getLatestDateIso = (...values: Array<string | null | undefined>): string | null => {
+  let latestDate: Date | null = null;
+
+  values.forEach((value) => {
+    const candidate = parseValidDate(value);
+    if (!candidate) {
+      return;
+    }
+
+    if (!latestDate || candidate.getTime() > latestDate.getTime()) {
+      latestDate = candidate;
+    }
+  });
+
+  return latestDate ? latestDate.toISOString() : null;
+};
+
 const ProveedoresActuales: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -109,7 +160,8 @@ const ProveedoresActuales: React.FC = () => {
   // Mapear ProveedorResponse a Proveedor
   const mapProveedorResponseToProveedor = (
     response: ProveedorResponse,
-    especialidadesPorRut: Record<string, string[]>
+    especialidadesPorRut: Record<string, string[]>,
+    ultimaActualizacionServiciosPorRut: Record<string, string | null>
   ): ProveedorConContacto => {
     // Mapear tipo_proveedor a TipoProveedor enum
     let tipo: TipoProveedor = TipoProveedor.EMPRESA;
@@ -142,6 +194,11 @@ const ProveedoresActuales: React.FC = () => {
     // Obtener especialidades priorizadas por RUT
     const rut = response.rut?.trim() || '';
     const especialidades = rut ? (especialidadesPorRut[rut] ?? []) : [];
+    const ultimaActualizacion = getLatestDateIso(
+      response.updated_at,
+      response.created_at,
+      rut ? ultimaActualizacionServiciosPorRut[rut] : null
+    );
     const informacionContactoObj = toPlainObject(response.informacion_contacto);
     const contactoComercial = toContactoDetalleProveedor(informacionContactoObj.contacto_comercial);
     const contactoAdicional1 = toContactoDetalleProveedor(informacionContactoObj.contacto_adicional_1);
@@ -229,6 +286,7 @@ const ProveedoresActuales: React.FC = () => {
       cruce: (response as any).cruce ?? (response as any).Cruce ?? null,
       created_at: response.created_at,
       updated_at: response.updated_at,
+      ultimaActualizacion,
     };
   };
 
@@ -263,9 +321,16 @@ const ProveedoresActuales: React.FC = () => {
               .filter((rut) => rut.length > 0)
           )
         );
-        const especialidadesPorRut = await fetchEspecialidadesPriorizadasByRuts(ruts);
+        const [especialidadesPorRut, ultimaActualizacionServiciosPorRut] = await Promise.all([
+          fetchEspecialidadesPriorizadasByRuts(ruts),
+          fetchUltimaActualizacionServiciosByRuts(ruts),
+        ]);
         const mappedProveedores = data.map((proveedor) =>
-          mapProveedorResponseToProveedor(proveedor, especialidadesPorRut)
+          mapProveedorResponseToProveedor(
+            proveedor,
+            especialidadesPorRut,
+            ultimaActualizacionServiciosPorRut
+          )
         );
         setProveedores(mappedProveedores);
       } catch (err: any) {
@@ -435,6 +500,26 @@ const ProveedoresActuales: React.FC = () => {
   const isInformacionActualizada = (cruce: string | null | undefined): boolean => {
     const normalizedCruce = normalizeSearchText(cruce).replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
     return normalizedCruce.includes('informacion actualizada');
+  };
+
+  const formatFechaActualizacion = (value: string | null | undefined): string => {
+    const parsedDate = parseValidDate(value);
+    if (parsedDate) {
+      return parsedDate.toLocaleDateString('es-CL', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+      });
+    }
+
+    const rawValue = value?.trim() || '';
+    const rawDateMatch = rawValue.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (rawDateMatch) {
+      const [, year, month, day] = rawDateMatch;
+      return `${day}-${month}-${year}`;
+    }
+
+    return '-';
   };
 
   const showContactoAdicional1 = contactoDetalleProveedor
@@ -624,11 +709,22 @@ const ProveedoresActuales: React.FC = () => {
                     <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700">RUT / TIPO</th>
                     <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700">ESPECIALIDAD</th>
                     <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700">CONTACTO</th>
-                    <th className="text-left py-4 px-4 text-sm font-semibold text-gray-700 bg-gradient-to-r from-gray-50 to-blue-50 w-[132px] min-w-[132px]">
+                    <th
+                      className="text-left py-4 px-4 text-sm font-semibold text-gray-700 bg-gradient-to-r from-gray-50 to-blue-50 w-[132px] min-w-[132px] cursor-help"
+                      title="Simbología: check_circle = proveedor envió información actualizada (contacto y servicios). warning = proveedor no ha enviado información actualizada."
+                    >
                       INFO ACTUALIZADA
                     </th>
+                    <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700 min-w-[150px]">
+                      ULT. ACTUALIZACION
+                    </th>
                     <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700">ESTADO</th>
-                    <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700">EVALUACION</th>
+                    <th
+                      className="text-left py-4 px-6 text-sm font-semibold text-gray-700 cursor-help"
+                      title="Promedio de las evaluaciones anteriores de los servicios que el proveedor ha entregado a Myma (0% a 100%). Rangos: >76.4% = A, 50%-76.4% = B, <50% = C."
+                    >
+                      EVALUACION
+                    </th>
                     <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700"># EVALUACIONES</th>
                     <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700"># A</th>
                     <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700"># B</th>
@@ -725,15 +821,28 @@ const ProveedoresActuales: React.FC = () => {
                       <td className="py-4 px-4 bg-white group-hover:bg-blue-50 w-[132px] min-w-[132px]">
                         <div className="flex items-center justify-center">
                           {isInformacionActualizada(proveedor.cruce) ? (
-                            <span className="material-symbols-outlined text-xl text-green-600" title="Informacion actualizada">
+                            <span
+                              className="material-symbols-outlined text-xl text-green-600"
+                              title="Proveedor envió información actualizada: contacto y servicios que entrega."
+                            >
                               check_circle
                             </span>
                           ) : (
-                            <span className="material-symbols-outlined text-xl text-amber-500" title="Informacion no actualizada">
+                            <span
+                              className="material-symbols-outlined text-xl text-amber-500"
+                              title="Proveedor no ha enviado información actualizada: contacto y/o servicios que entrega."
+                            >
                               warning
                             </span>
                           )}
                         </div>
+                      </td>
+                      <td className="py-4 px-6">
+                        <span className="text-sm text-[#111318]">
+                          {formatFechaActualizacion(
+                            proveedor.ultimaActualizacion ?? proveedor.updated_at ?? proveedor.created_at
+                          )}
+                        </span>
                       </td>
                       <td className="py-4 px-6">
                         <span

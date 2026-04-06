@@ -833,6 +833,88 @@ const dedupeEspecialidades = (especialidades: string[]): string[] => {
   return Array.from(byNormalized.values());
 };
 
+const parseValidDate = (value: unknown): Date | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const rawValue = value.trim();
+  if (!rawValue) {
+    return null;
+  }
+
+  const candidates = [
+    rawValue,
+    rawValue.replace(' ', 'T'),
+    rawValue.replace(/(\.\d{3})\d+/, '$1'),
+    rawValue.replace(/(\.\d{3})\d+/, '$1').replace(' ', 'T'),
+  ];
+
+  for (const candidate of candidates) {
+    const parsed = new Date(candidate);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed;
+    }
+  }
+
+  return null;
+};
+
+const pickLatestDate = (current: Date | null, candidate: Date | null): Date | null => {
+  if (!candidate) {
+    return current;
+  }
+
+  if (!current || candidate.getTime() > current.getTime()) {
+    return candidate;
+  }
+
+  return current;
+};
+
+export const fetchUltimaActualizacionServiciosByRuts = async (
+  ruts: string[]
+): Promise<Record<string, string | null>> => {
+  const normalizedRuts = Array.from(
+    new Set(ruts.map((rut) => rut?.trim()).filter((rut): rut is string => Boolean(rut)))
+  );
+
+  if (normalizedRuts.length === 0) {
+    return {};
+  }
+
+  const ultimaActualizacionPorRut = normalizedRuts.reduce<Record<string, string | null>>((acc, rut) => {
+    acc[rut] = null;
+    return acc;
+  }, {});
+
+  const { data, error } = await supabase
+    .from('brg_proveedores_servicios')
+    .select('rut, created_at, updated_at')
+    .in('rut', normalizedRuts);
+
+  if (error) {
+    console.error('Error fetching ultima actualizacion de servicios por rut:', error);
+    throw error;
+  }
+
+  (data || []).forEach((item) => {
+    const rut = typeof item.rut === 'string' ? item.rut.trim() : '';
+    if (!rut) {
+      return;
+    }
+
+    const currentLatest = parseValidDate(ultimaActualizacionPorRut[rut]);
+    const createdAt = parseValidDate(item.created_at);
+    const updatedAt = parseValidDate(item.updated_at);
+
+    const latest = pickLatestDate(pickLatestDate(currentLatest, createdAt), updatedAt);
+    ultimaActualizacionPorRut[rut] = latest ? latest.toISOString() : null;
+  });
+
+  return ultimaActualizacionPorRut;
+};
+
 export const fetchEspecialidadesPriorizadasByRuts = async (
   ruts: string[]
 ): Promise<Record<string, string[]>> => {
