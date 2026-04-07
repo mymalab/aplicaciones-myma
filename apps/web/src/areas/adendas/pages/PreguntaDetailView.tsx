@@ -1,10 +1,13 @@
 ﻿import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
+  buildNotebookChatPayloadCandidates,
   buildEstrategiaPromptContext,
+  fetchCatalogoNotebookExpertos,
   fetchPreguntaById,
   fetchPreguntasCatalogos,
   generateEstrategiaFromNotebookChat,
+  generateRespuestaIaFromNotebookChatByNotebookId,
   getAdjuntosDescripcion,
   normalizeComplejidadPregunta,
   normalizeEstadoPregunta,
@@ -12,6 +15,7 @@ import {
 } from '../services/preguntasService';
 import type {
   CatalogoEspecialidad,
+  CatalogoNotebookExperto,
   CatalogoPersona,
   ComplejidadPregunta,
   EstadoPregunta,
@@ -83,8 +87,11 @@ const formatWordCount = (count: number): string => {
 };
 
 const DEFAULT_ESTRATEGIA_PROMPT_NAME = 'Generador de estructura de respuesta';
-const DEFAULT_RESPUESTA_PROMPT_NAME = 'Generador de estructura de respuesta';
-const DEFAULT_RESPUESTA_EXPERTO_PROMPT_NAME = 'Generador de estructura de respuesta';
+const ADENDAS_NOTEBOOK_CHAT_BASE_URL = (
+  import.meta.env.VITE_ADENDAS_NOTEBOOK_CHAT_BASE_URL || 'http://localhost:8001'
+)
+  .trim()
+  .replace(/\/+$/, '');
 
 const normalizePromptName = (value: string): string =>
   value
@@ -150,10 +157,12 @@ const PreguntaDetailView: React.FC = () => {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [aiMessage, setAiMessage] = useState<string | null>(null);
   const [aiRespuestaMessage, setAiRespuestaMessage] = useState<string | null>(null);
-  const [aiRespuestaExpertoMessage, setAiRespuestaExpertoMessage] = useState<string | null>(null);
   const [pregunta, setPregunta] = useState<PreguntaGestion | null>(null);
   const [personas, setPersonas] = useState<CatalogoPersona[]>([]);
   const [especialidades, setEspecialidades] = useState<CatalogoEspecialidad[]>([]);
+  const [notebookExpertos, setNotebookExpertos] = useState<CatalogoNotebookExperto[]>([]);
+  const [selectedNotebookExpertoId, setSelectedNotebookExpertoId] = useState('');
+  const [notebookExpertosError, setNotebookExpertosError] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [generatingStrategy, setGeneratingStrategy] = useState(false);
   const [draft, setDraft] = useState<DraftPregunta | null>(null);
@@ -167,53 +176,12 @@ const PreguntaDetailView: React.FC = () => {
   const [promptPreviewName, setPromptPreviewName] = useState(DEFAULT_ESTRATEGIA_PROMPT_NAME);
   const [promptPreviewVersion, setPromptPreviewVersion] = useState<number | null>(null);
   const [promptPreviewUsingCatalog, setPromptPreviewUsingCatalog] = useState(false);
-  const [showRespuestaPromptPreview, setShowRespuestaPromptPreview] = useState(false);
-  const [loadingRespuestaPromptPreview, setLoadingRespuestaPromptPreview] = useState(false);
-  const [respuestaPromptPreview, setRespuestaPromptPreview] = useState('');
-  const [respuestaPromptPreviewPromptSection, setRespuestaPromptPreviewPromptSection] = useState(
-    ''
-  );
-  const [respuestaPromptPreviewQuestionSection, setRespuestaPromptPreviewQuestionSection] =
-    useState('');
-  const [respuestaPromptPreviewStrategySection, setRespuestaPromptPreviewStrategySection] =
-    useState('');
-  const [respuestaPromptPreviewError, setRespuestaPromptPreviewError] = useState<string | null>(null);
-  const [respuestaPromptPreviewName, setRespuestaPromptPreviewName] = useState(
-    DEFAULT_RESPUESTA_PROMPT_NAME
-  );
-  const [respuestaPromptPreviewVersion, setRespuestaPromptPreviewVersion] = useState<number | null>(
-    null
-  );
-  const [respuestaPromptPreviewUsingCatalog, setRespuestaPromptPreviewUsingCatalog] =
-    useState(false);
-  const [showRespuestaExpertoPromptPreview, setShowRespuestaExpertoPromptPreview] = useState(false);
-  const [loadingRespuestaExpertoPromptPreview, setLoadingRespuestaExpertoPromptPreview] =
-    useState(false);
-  const [respuestaExpertoPromptPreview, setRespuestaExpertoPromptPreview] = useState('');
-  const [respuestaExpertoPromptPreviewPromptSection, setRespuestaExpertoPromptPreviewPromptSection] =
-    useState('');
-  const [respuestaExpertoPromptPreviewQuestionSection, setRespuestaExpertoPromptPreviewQuestionSection] =
-    useState('');
-  const [respuestaExpertoPromptPreviewStrategySection, setRespuestaExpertoPromptPreviewStrategySection] =
-    useState('');
-  const [respuestaExpertoPromptPreviewError, setRespuestaExpertoPromptPreviewError] =
-    useState<string | null>(null);
-  const [respuestaExpertoPromptPreviewName, setRespuestaExpertoPromptPreviewName] = useState(
-    DEFAULT_RESPUESTA_EXPERTO_PROMPT_NAME
-  );
-  const [respuestaExpertoPromptPreviewVersion, setRespuestaExpertoPromptPreviewVersion] =
-    useState<number | null>(null);
-  const [respuestaExpertoPromptPreviewUsingCatalog, setRespuestaExpertoPromptPreviewUsingCatalog] =
-    useState(false);
   const [promptCatalogOptions, setPromptCatalogOptions] = useState<CatalogPromptItem[]>([]);
   const [selectedPromptCatalogId, setSelectedPromptCatalogId] = useState('');
-  const [selectedRespuestaPromptCatalogId, setSelectedRespuestaPromptCatalogId] = useState('');
-  const [selectedRespuestaExpertoPromptCatalogId, setSelectedRespuestaExpertoPromptCatalogId] =
-    useState('');
   const [loadingPromptCatalogOptions, setLoadingPromptCatalogOptions] = useState(false);
   const [promptCatalogOptionsError, setPromptCatalogOptionsError] = useState<string | null>(null);
   const [generatingRespuestaIa, setGeneratingRespuestaIa] = useState(false);
-  const [generatingRespuestaExpertoIa, setGeneratingRespuestaExpertoIa] = useState(false);
+  const [showRespuestaIaRequestPreview, setShowRespuestaIaRequestPreview] = useState(false);
 
   const preguntaIdNumber = useMemo(() => {
     const parsed = Number(preguntaId);
@@ -226,18 +194,38 @@ const PreguntaDetailView: React.FC = () => {
     );
   }, [promptCatalogOptions, selectedPromptCatalogId]);
 
-  const selectedRespuestaPromptOption = useMemo(() => {
-    return (
-      promptCatalogOptions.find((item) => item.id === selectedRespuestaPromptCatalogId) || null
-    );
-  }, [promptCatalogOptions, selectedRespuestaPromptCatalogId]);
+  const selectedNotebookExperto = useMemo(() => {
+    return notebookExpertos.find((item) => item.id === selectedNotebookExpertoId) || null;
+  }, [notebookExpertos, selectedNotebookExpertoId]);
 
-  const selectedRespuestaExpertoPromptOption = useMemo(() => {
-    return (
-      promptCatalogOptions.find((item) => item.id === selectedRespuestaExpertoPromptCatalogId) ||
-      null
-    );
-  }, [promptCatalogOptions, selectedRespuestaExpertoPromptCatalogId]);
+  const respuestaIaPayloadInput = useMemo(() => {
+    const preguntaTexto = (pregunta?.texto || '').trim();
+    const estrategiaTexto = (draft?.estrategia || pregunta?.estrategia || '').trim();
+    if (!preguntaTexto || preguntaTexto === '-' || !estrategiaTexto) {
+      return null;
+    }
+
+    return {
+      preguntaTexto,
+      estrategiaTexto,
+      payloadInput: ['Pregunta:', preguntaTexto, '', 'Estrategia:', estrategiaTexto].join('\n'),
+    };
+  }, [pregunta?.texto, pregunta?.estrategia, draft?.estrategia]);
+
+  const respuestaIaEndpointPreview = useMemo(() => {
+    if (!selectedNotebookExperto?.notebook_id) {
+      return '';
+    }
+
+    return `${ADENDAS_NOTEBOOK_CHAT_BASE_URL}/notebooks/${encodeURIComponent(
+      selectedNotebookExperto.notebook_id
+    )}/chat`;
+  }, [selectedNotebookExperto]);
+
+  const respuestaIaInputPreview = respuestaIaPayloadInput?.payloadInput || '';
+  const respuestaIaPayloadCandidates = useMemo(() => {
+    return buildNotebookChatPayloadCandidates(respuestaIaInputPreview);
+  }, [respuestaIaInputPreview]);
 
   const currentPromptBadgeLabel = useMemo(() => {
     if (selectedPromptOption) {
@@ -256,44 +244,6 @@ const PreguntaDetailView: React.FC = () => {
     promptPreviewVersion,
   ]);
 
-  const currentRespuestaPromptBadgeLabel = useMemo(() => {
-    if (selectedRespuestaPromptOption) {
-      return `${selectedRespuestaPromptOption.nombre_prompt} v${selectedRespuestaPromptOption.version}`;
-    }
-
-    if (respuestaPromptPreviewUsingCatalog) {
-      return `${respuestaPromptPreviewName}${
-        respuestaPromptPreviewVersion ? ` v${respuestaPromptPreviewVersion}` : ''
-      }`;
-    }
-
-    return `${DEFAULT_RESPUESTA_PROMPT_NAME} (base)`;
-  }, [
-    selectedRespuestaPromptOption,
-    respuestaPromptPreviewName,
-    respuestaPromptPreviewUsingCatalog,
-    respuestaPromptPreviewVersion,
-  ]);
-
-  const currentRespuestaExpertoPromptBadgeLabel = useMemo(() => {
-    if (selectedRespuestaExpertoPromptOption) {
-      return `${selectedRespuestaExpertoPromptOption.nombre_prompt} v${selectedRespuestaExpertoPromptOption.version}`;
-    }
-
-    if (respuestaExpertoPromptPreviewUsingCatalog) {
-      return `${respuestaExpertoPromptPreviewName}${
-        respuestaExpertoPromptPreviewVersion ? ` v${respuestaExpertoPromptPreviewVersion}` : ''
-      }`;
-    }
-
-    return `${DEFAULT_RESPUESTA_EXPERTO_PROMPT_NAME} (base)`;
-  }, [
-    selectedRespuestaExpertoPromptOption,
-    respuestaExpertoPromptPreviewName,
-    respuestaExpertoPromptPreviewUsingCatalog,
-    respuestaExpertoPromptPreviewVersion,
-  ]);
-
   useEffect(() => {
     let isMounted = true;
 
@@ -310,13 +260,35 @@ const PreguntaDetailView: React.FC = () => {
         setLoading(true);
         setError(null);
 
-        const catalogos = await fetchPreguntasCatalogos();
+        const [catalogos, notebookExpertosResult] = await Promise.all([
+          fetchPreguntasCatalogos(),
+          fetchCatalogoNotebookExpertos()
+            .then((data) => ({ data, error: null as string | null }))
+            .catch((err: any) => {
+              console.error('Error loading notebook expertos catalog:', err);
+              return {
+                data: [] as CatalogoNotebookExperto[],
+                error:
+                  err?.message ||
+                  'No fue posible cargar el catalogo de expertos para Respuesta IA.',
+              };
+            }),
+        ]);
         const { pregunta: data } = await fetchPreguntaById(preguntaIdNumber, catalogos);
 
         if (!isMounted) return;
 
         setPersonas(catalogos.personas);
         setEspecialidades(catalogos.especialidades);
+        setNotebookExpertos(notebookExpertosResult.data);
+        setNotebookExpertosError(notebookExpertosResult.error);
+        setSelectedNotebookExpertoId((prev) => {
+          const selectedExists = notebookExpertosResult.data.some((item) => item.id === prev);
+          if (selectedExists) {
+            return prev;
+          }
+          return notebookExpertosResult.data[0]?.id || '';
+        });
 
         if (!data) {
           setPregunta(null);
@@ -391,76 +363,6 @@ const PreguntaDetailView: React.FC = () => {
     setPromptPreview(promptContext.promptCompleto);
   };
 
-  const buildPreviewWithRespuestaPromptSelection = async (
-    payloadInput: string,
-    preguntaTexto: string,
-    estrategiaTexto: string,
-    promptOption: CatalogPromptItem | null
-  ) => {
-    const promptContext = await buildEstrategiaPromptContext(
-      payloadInput,
-      promptOption
-        ? {
-            promptCatalogoOverride: promptOption.prompt,
-            promptNombreOverride: promptOption.nombre_prompt,
-            promptVersionOverride: promptOption.version,
-          }
-        : {}
-    );
-
-    setRespuestaPromptPreviewName(promptContext.promptNombreBase);
-    setRespuestaPromptPreviewVersion(promptContext.promptVersion);
-    setRespuestaPromptPreviewUsingCatalog(Boolean(promptContext.promptCatalogo));
-    setRespuestaPromptPreviewPromptSection((promptContext.promptCatalogo || '').trim());
-    setRespuestaPromptPreviewQuestionSection(preguntaTexto.trim());
-    setRespuestaPromptPreviewStrategySection(estrategiaTexto.trim());
-    setRespuestaPromptPreview(promptContext.promptCompleto);
-  };
-
-  const buildPreviewWithRespuestaExpertoPromptSelection = async (
-    payloadInput: string,
-    preguntaTexto: string,
-    estrategiaTexto: string,
-    promptOption: CatalogPromptItem | null
-  ) => {
-    const promptContext = await buildEstrategiaPromptContext(
-      payloadInput,
-      promptOption
-        ? {
-            promptCatalogoOverride: promptOption.prompt,
-            promptNombreOverride: promptOption.nombre_prompt,
-            promptVersionOverride: promptOption.version,
-          }
-        : {}
-    );
-
-    setRespuestaExpertoPromptPreviewName(promptContext.promptNombreBase);
-    setRespuestaExpertoPromptPreviewVersion(promptContext.promptVersion);
-    setRespuestaExpertoPromptPreviewUsingCatalog(Boolean(promptContext.promptCatalogo));
-    setRespuestaExpertoPromptPreviewPromptSection((promptContext.promptCatalogo || '').trim());
-    setRespuestaExpertoPromptPreviewQuestionSection(preguntaTexto.trim());
-    setRespuestaExpertoPromptPreviewStrategySection(estrategiaTexto.trim());
-    setRespuestaExpertoPromptPreview(promptContext.promptCompleto);
-  };
-
-  const buildRespuestaIaPayloadInput = (): {
-    preguntaTexto: string;
-    estrategiaTexto: string;
-    payloadInput: string;
-  } | null => {
-    const preguntaTexto = (pregunta?.texto || '').trim();
-    const estrategiaTexto = (draft?.estrategia || pregunta?.estrategia || '').trim();
-    if (!preguntaTexto || preguntaTexto === '-' || !estrategiaTexto) {
-      return null;
-    }
-
-    return {
-      preguntaTexto,
-      estrategiaTexto,
-      payloadInput: ['Pregunta:', preguntaTexto, '', 'Estrategia:', estrategiaTexto].join('\n'),
-    };
-  };
-
   useEffect(() => {
     let isMounted = true;
 
@@ -471,36 +373,14 @@ const PreguntaDetailView: React.FC = () => {
       if (!isMounted) return;
 
       const selectedExists = options.some((item) => item.id === selectedPromptCatalogId);
-      const selectedRespuestaExists = options.some(
-        (item) => item.id === selectedRespuestaPromptCatalogId
-      );
-      const selectedRespuestaExpertoExists = options.some(
-        (item) => item.id === selectedRespuestaExpertoPromptCatalogId
-      );
       const defaultOption = findDefaultPromptOption(options);
       const nextSelectedId = selectedExists ? selectedPromptCatalogId : defaultOption?.id || '';
-      const nextSelectedRespuestaId = selectedRespuestaExists
-        ? selectedRespuestaPromptCatalogId
-        : defaultOption?.id || '';
-      const nextSelectedRespuestaExpertoId = selectedRespuestaExpertoExists
-        ? selectedRespuestaExpertoPromptCatalogId
-        : defaultOption?.id || '';
 
       if (nextSelectedId !== selectedPromptCatalogId) {
         setSelectedPromptCatalogId(nextSelectedId);
       }
-      if (nextSelectedRespuestaId !== selectedRespuestaPromptCatalogId) {
-        setSelectedRespuestaPromptCatalogId(nextSelectedRespuestaId);
-      }
-      if (nextSelectedRespuestaExpertoId !== selectedRespuestaExpertoPromptCatalogId) {
-        setSelectedRespuestaExpertoPromptCatalogId(nextSelectedRespuestaExpertoId);
-      }
 
       const effectiveOption = options.find((item) => item.id === nextSelectedId) || null;
-      const effectiveRespuestaOption =
-        options.find((item) => item.id === nextSelectedRespuestaId) || null;
-      const effectiveRespuestaExpertoOption =
-        options.find((item) => item.id === nextSelectedRespuestaExpertoId) || null;
       if (effectiveOption) {
         setPromptPreviewName(effectiveOption.nombre_prompt);
         setPromptPreviewVersion(effectiveOption.version);
@@ -509,26 +389,6 @@ const PreguntaDetailView: React.FC = () => {
         setPromptPreviewName(DEFAULT_ESTRATEGIA_PROMPT_NAME);
         setPromptPreviewVersion(null);
         setPromptPreviewUsingCatalog(false);
-      }
-
-      if (effectiveRespuestaOption) {
-        setRespuestaPromptPreviewName(effectiveRespuestaOption.nombre_prompt);
-        setRespuestaPromptPreviewVersion(effectiveRespuestaOption.version);
-        setRespuestaPromptPreviewUsingCatalog(true);
-      } else {
-        setRespuestaPromptPreviewName(DEFAULT_RESPUESTA_PROMPT_NAME);
-        setRespuestaPromptPreviewVersion(null);
-        setRespuestaPromptPreviewUsingCatalog(false);
-      }
-
-      if (effectiveRespuestaExpertoOption) {
-        setRespuestaExpertoPromptPreviewName(effectiveRespuestaExpertoOption.nombre_prompt);
-        setRespuestaExpertoPromptPreviewVersion(effectiveRespuestaExpertoOption.version);
-        setRespuestaExpertoPromptPreviewUsingCatalog(true);
-      } else {
-        setRespuestaExpertoPromptPreviewName(DEFAULT_RESPUESTA_EXPERTO_PROMPT_NAME);
-        setRespuestaExpertoPromptPreviewVersion(null);
-        setRespuestaExpertoPromptPreviewUsingCatalog(false);
       }
     };
 
@@ -554,7 +414,6 @@ const PreguntaDetailView: React.FC = () => {
     setIsEditing(true);
     setAiMessage(null);
     setAiRespuestaMessage(null);
-    setAiRespuestaExpertoMessage(null);
     setSuccessMessage(null);
   };
 
@@ -564,7 +423,6 @@ const PreguntaDetailView: React.FC = () => {
     setIsEditing(false);
     setAiMessage(null);
     setAiRespuestaMessage(null);
-    setAiRespuestaExpertoMessage(null);
   };
 
   const handleSave = async () => {
@@ -640,7 +498,6 @@ const PreguntaDetailView: React.FC = () => {
       setIsEditing(false);
       setAiMessage(null);
       setAiRespuestaMessage(null);
-      setAiRespuestaExpertoMessage(null);
       setSuccessMessage('Cambios guardados correctamente.');
     } catch (err: any) {
       console.error('Error saving pregunta:', err);
@@ -670,7 +527,6 @@ const PreguntaDetailView: React.FC = () => {
     setSuccessMessage(null);
     setAiMessage(null);
     setAiRespuestaMessage(null);
-    setAiRespuestaExpertoMessage(null);
 
     try {
       let promptForGeneration = selectedPromptOption;
@@ -711,14 +567,12 @@ const PreguntaDetailView: React.FC = () => {
   const handleGenerateRespuestaIa = async () => {
     if (!pregunta || !draft) return;
 
-    const adendaId = pregunta.adenda_id;
-    if (!adendaId || !Number.isFinite(adendaId)) {
-      setError('La pregunta no está asociada a una adenda válida.');
+    if (!selectedNotebookExperto?.notebook_id) {
+      setError('Selecciona un experto con notebook_id válido antes de generar la respuesta IA.');
       return;
     }
 
-    const respuestaPayload = buildRespuestaIaPayloadInput();
-    if (!respuestaPayload) {
+    if (!respuestaIaPayloadInput) {
       setError(
         'Para generar Respuesta IA debes tener pregunta y estrategia en esta sección.'
       );
@@ -730,27 +584,11 @@ const PreguntaDetailView: React.FC = () => {
     setSuccessMessage(null);
     setAiMessage(null);
     setAiRespuestaMessage(null);
-    setAiRespuestaExpertoMessage(null);
 
     try {
-      let promptForGeneration = selectedRespuestaPromptOption;
-      if (selectedRespuestaPromptCatalogId && !promptForGeneration) {
-        const reloadedOptions = await loadPromptCatalogOptions();
-        promptForGeneration =
-          reloadedOptions.find((item) => item.id === selectedRespuestaPromptCatalogId) ||
-          null;
-      }
-
-      const answer = await generateEstrategiaFromNotebookChat(
-        adendaId,
-        respuestaPayload.payloadInput,
-        promptForGeneration
-          ? {
-              promptCatalogoOverride: promptForGeneration.prompt,
-              promptNombreOverride: promptForGeneration.nombre_prompt,
-              promptVersionOverride: promptForGeneration.version,
-            }
-          : {}
+      const answer = await generateRespuestaIaFromNotebookChatByNotebookId(
+        selectedNotebookExperto.notebook_id,
+        respuestaIaPayloadInput.payloadInput
       );
 
       setDraft((prev) =>
@@ -769,70 +607,6 @@ const PreguntaDetailView: React.FC = () => {
       setError(err?.message || 'No fue posible generar la respuesta IA.');
     } finally {
       setGeneratingRespuestaIa(false);
-    }
-  };
-
-  const handleGenerateRespuestaExpertoIa = async () => {
-    if (!pregunta || !draft) return;
-
-    const adendaId = pregunta.adenda_id;
-    if (!adendaId || !Number.isFinite(adendaId)) {
-      setError('La pregunta no está asociada a una adenda válida.');
-      return;
-    }
-
-    const respuestaPayload = buildRespuestaIaPayloadInput();
-    if (!respuestaPayload) {
-      setError(
-        'Para generar Respuesta con Experto IA debes tener pregunta y estrategia en esta sección.'
-      );
-      return;
-    }
-
-    setGeneratingRespuestaExpertoIa(true);
-    setError(null);
-    setSuccessMessage(null);
-    setAiMessage(null);
-    setAiRespuestaMessage(null);
-    setAiRespuestaExpertoMessage(null);
-
-    try {
-      let promptForGeneration = selectedRespuestaExpertoPromptOption;
-      if (selectedRespuestaExpertoPromptCatalogId && !promptForGeneration) {
-        const reloadedOptions = await loadPromptCatalogOptions();
-        promptForGeneration =
-          reloadedOptions.find((item) => item.id === selectedRespuestaExpertoPromptCatalogId) ||
-          null;
-      }
-
-      const answer = await generateEstrategiaFromNotebookChat(
-        adendaId,
-        respuestaPayload.payloadInput,
-        promptForGeneration
-          ? {
-              promptCatalogoOverride: promptForGeneration.prompt,
-              promptNombreOverride: promptForGeneration.nombre_prompt,
-              promptVersionOverride: promptForGeneration.version,
-            }
-          : {}
-      );
-
-      setDraft((prev) =>
-        prev
-          ? {
-              ...prev,
-              respuesta_experto_ia: answer,
-            }
-          : prev
-      );
-      setAiRespuestaExpertoMessage(
-        'La IA completó la respuesta de Experto. Revisa el texto y luego guarda.'
-      );
-    } catch (err: any) {
-      console.error('Error generating respuesta experto IA with AI:', err);
-      setError(err?.message || 'No fue posible generar la respuesta con Experto IA.');
-    } finally {
-      setGeneratingRespuestaExpertoIa(false);
     }
   };
 
@@ -886,126 +660,12 @@ const PreguntaDetailView: React.FC = () => {
     setShowPromptPreview(false);
   };
 
-  const handleOpenRespuestaPromptPreview = async () => {
-    if (!pregunta) return;
-
-    const respuestaPayload = buildRespuestaIaPayloadInput();
-    if (!respuestaPayload) {
-      setError('Para previsualizar Respuesta IA debes tener pregunta y estrategia.');
-      return;
-    }
-
-    setShowRespuestaPromptPreview(true);
-    setLoadingRespuestaPromptPreview(true);
-    setRespuestaPromptPreviewError(null);
-    setRespuestaPromptPreview('');
-    setRespuestaPromptPreviewPromptSection('');
-    setRespuestaPromptPreviewQuestionSection('');
-    setRespuestaPromptPreviewStrategySection('');
-    setRespuestaPromptPreviewVersion(null);
-    setRespuestaPromptPreviewUsingCatalog(false);
-
-    try {
-      const options =
-        promptCatalogOptions.length > 0
-          ? promptCatalogOptions
-          : await loadPromptCatalogOptions();
-
-      const selectedExists = options.some(
-        (item) => item.id === selectedRespuestaPromptCatalogId
-      );
-      const defaultOption = findDefaultPromptOption(options);
-      const effectiveSelectedId = selectedExists
-        ? selectedRespuestaPromptCatalogId
-        : defaultOption?.id || '';
-
-      if (effectiveSelectedId !== selectedRespuestaPromptCatalogId) {
-        setSelectedRespuestaPromptCatalogId(effectiveSelectedId);
-      }
-
-      const effectiveOption =
-        options.find((item) => item.id === effectiveSelectedId) || null;
-
-      await buildPreviewWithRespuestaPromptSelection(
-        respuestaPayload.payloadInput,
-        respuestaPayload.preguntaTexto,
-        respuestaPayload.estrategiaTexto,
-        effectiveOption
-      );
-    } catch (err: any) {
-      console.error('Error loading respuesta IA prompt preview:', err);
-      setRespuestaPromptPreviewError(
-        err?.message ||
-          'No fue posible cargar el prompt que se usa para la respuesta IA.'
-      );
-    } finally {
-      setLoadingRespuestaPromptPreview(false);
-    }
+  const handleOpenRespuestaIaRequestPreview = () => {
+    setShowRespuestaIaRequestPreview(true);
   };
 
-  const handleCloseRespuestaPromptPreview = () => {
-    setShowRespuestaPromptPreview(false);
-  };
-
-  const handleOpenRespuestaExpertoPromptPreview = async () => {
-    if (!pregunta) return;
-
-    const respuestaPayload = buildRespuestaIaPayloadInput();
-    if (!respuestaPayload) {
-      setError('Para previsualizar Respuesta con Experto IA debes tener pregunta y estrategia.');
-      return;
-    }
-
-    setShowRespuestaExpertoPromptPreview(true);
-    setLoadingRespuestaExpertoPromptPreview(true);
-    setRespuestaExpertoPromptPreviewError(null);
-    setRespuestaExpertoPromptPreview('');
-    setRespuestaExpertoPromptPreviewPromptSection('');
-    setRespuestaExpertoPromptPreviewQuestionSection('');
-    setRespuestaExpertoPromptPreviewStrategySection('');
-    setRespuestaExpertoPromptPreviewVersion(null);
-    setRespuestaExpertoPromptPreviewUsingCatalog(false);
-
-    try {
-      const options =
-        promptCatalogOptions.length > 0
-          ? promptCatalogOptions
-          : await loadPromptCatalogOptions();
-
-      const selectedExists = options.some(
-        (item) => item.id === selectedRespuestaExpertoPromptCatalogId
-      );
-      const defaultOption = findDefaultPromptOption(options);
-      const effectiveSelectedId = selectedExists
-        ? selectedRespuestaExpertoPromptCatalogId
-        : defaultOption?.id || '';
-
-      if (effectiveSelectedId !== selectedRespuestaExpertoPromptCatalogId) {
-        setSelectedRespuestaExpertoPromptCatalogId(effectiveSelectedId);
-      }
-
-      const effectiveOption =
-        options.find((item) => item.id === effectiveSelectedId) || null;
-
-      await buildPreviewWithRespuestaExpertoPromptSelection(
-        respuestaPayload.payloadInput,
-        respuestaPayload.preguntaTexto,
-        respuestaPayload.estrategiaTexto,
-        effectiveOption
-      );
-    } catch (err: any) {
-      console.error('Error loading respuesta experto IA prompt preview:', err);
-      setRespuestaExpertoPromptPreviewError(
-        err?.message ||
-          'No fue posible cargar el prompt que se usa para la respuesta con Experto IA.'
-      );
-    } finally {
-      setLoadingRespuestaExpertoPromptPreview(false);
-    }
-  };
-
-  const handleCloseRespuestaExpertoPromptPreview = () => {
-    setShowRespuestaExpertoPromptPreview(false);
+  const handleCloseRespuestaIaRequestPreview = () => {
+    setShowRespuestaIaRequestPreview(false);
   };
 
   const handlePromptSelectionChange = async (nextPromptId: string) => {
@@ -1038,80 +698,6 @@ const PreguntaDetailView: React.FC = () => {
       );
     } finally {
       setLoadingPromptPreview(false);
-    }
-  };
-
-  const handleRespuestaPromptSelectionChange = async (nextPromptId: string) => {
-    setSelectedRespuestaPromptCatalogId(nextPromptId);
-
-    const respuestaPayload = buildRespuestaIaPayloadInput();
-    if (!respuestaPayload) {
-      setRespuestaPromptPreviewError(
-        'Para previsualizar Respuesta IA debes tener pregunta y estrategia.'
-      );
-      return;
-    }
-
-    setLoadingRespuestaPromptPreview(true);
-    setRespuestaPromptPreviewError(null);
-
-    try {
-      const options =
-        promptCatalogOptions.length > 0
-          ? promptCatalogOptions
-          : await loadPromptCatalogOptions();
-      const selectedOption = options.find((item) => item.id === nextPromptId) || null;
-      await buildPreviewWithRespuestaPromptSelection(
-        respuestaPayload.payloadInput,
-        respuestaPayload.preguntaTexto,
-        respuestaPayload.estrategiaTexto,
-        selectedOption
-      );
-    } catch (err: any) {
-      console.error('Error changing respuesta IA prompt selection:', err);
-      setRespuestaPromptPreviewError(
-        err?.message ||
-          'No fue posible actualizar la vista previa del prompt de respuesta IA.'
-      );
-    } finally {
-      setLoadingRespuestaPromptPreview(false);
-    }
-  };
-
-  const handleRespuestaExpertoPromptSelectionChange = async (nextPromptId: string) => {
-    setSelectedRespuestaExpertoPromptCatalogId(nextPromptId);
-
-    const respuestaPayload = buildRespuestaIaPayloadInput();
-    if (!respuestaPayload) {
-      setRespuestaExpertoPromptPreviewError(
-        'Para previsualizar Respuesta con Experto IA debes tener pregunta y estrategia.'
-      );
-      return;
-    }
-
-    setLoadingRespuestaExpertoPromptPreview(true);
-    setRespuestaExpertoPromptPreviewError(null);
-
-    try {
-      const options =
-        promptCatalogOptions.length > 0
-          ? promptCatalogOptions
-          : await loadPromptCatalogOptions();
-      const selectedOption = options.find((item) => item.id === nextPromptId) || null;
-      await buildPreviewWithRespuestaExpertoPromptSelection(
-        respuestaPayload.payloadInput,
-        respuestaPayload.preguntaTexto,
-        respuestaPayload.estrategiaTexto,
-        selectedOption
-      );
-    } catch (err: any) {
-      console.error('Error changing respuesta experto IA prompt selection:', err);
-      setRespuestaExpertoPromptPreviewError(
-        err?.message ||
-          'No fue posible actualizar la vista previa del prompt de respuesta con Experto IA.'
-      );
-    } finally {
-      setLoadingRespuestaExpertoPromptPreview(false);
     }
   };
 
@@ -1534,30 +1120,50 @@ const PreguntaDetailView: React.FC = () => {
 
           <div>
             <div className="mb-2 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <label className="block text-sm font-medium text-gray-500">Respuesta IA</label>
-                <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-[11px] font-medium text-gray-600">
-                  Prompt: {currentRespuestaPromptBadgeLabel}
-                </span>
+                <div className="flex items-center gap-2">
+                  <label className="text-xs font-medium text-gray-500" htmlFor="respuesta-ia-experto-select">
+                    Experto
+                  </label>
+                  <select
+                    id="respuesta-ia-experto-select"
+                    value={selectedNotebookExpertoId}
+                    onChange={(event) => setSelectedNotebookExpertoId(event.target.value)}
+                    disabled={notebookExpertos.length === 0}
+                    className="h-8 min-w-[220px] max-w-[320px] rounded-lg border border-gray-200 bg-white px-2.5 text-xs text-[#111318] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {notebookExpertos.length === 0 ? (
+                      <option value="">Sin expertos disponibles</option>
+                    ) : (
+                      notebookExpertos.map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.nombre}
+                        </option>
+                      ))
+                    )}
+                  </select>
+                </div>
               </div>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={handleOpenRespuestaPromptPreview}
-                  disabled={loadingRespuestaPromptPreview}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-[#111318] hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
-                  title="Ver prompt que usa IA para respuesta"
+                  onClick={handleOpenRespuestaIaRequestPreview}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-[#111318] hover:bg-gray-50"
+                  title="Ver solicitud enviada a la API"
                 >
-                  <span className="material-symbols-outlined text-base leading-none">
-                    {loadingRespuestaPromptPreview ? 'hourglass_top' : 'visibility'}
-                  </span>
+                  <span className="material-symbols-outlined text-base leading-none">visibility</span>
                 </button>
-
                 {isEditing && (
                   <button
                     type="button"
                     onClick={handleGenerateRespuestaIa}
-                    disabled={generatingRespuestaIa || saving}
+                    disabled={
+                      generatingRespuestaIa ||
+                      saving ||
+                      !selectedNotebookExperto?.notebook_id ||
+                      !respuestaIaPayloadInput
+                    }
                     className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-[#111318] hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
                     title="Generar respuesta IA"
                   >
@@ -1571,6 +1177,9 @@ const PreguntaDetailView: React.FC = () => {
                 )}
               </div>
             </div>
+            {notebookExpertosError && (
+              <p className="mb-2 text-xs text-amber-700">{notebookExpertosError}</p>
+            )}
             {aiRespuestaMessage && (
               <p className="mb-2 text-xs text-emerald-700">{aiRespuestaMessage}</p>
             )}
@@ -1594,74 +1203,6 @@ const PreguntaDetailView: React.FC = () => {
             ) : (
               <p className="text-sm text-[#111318] leading-relaxed whitespace-pre-wrap">
                 {pregunta.respuesta_ia || 'Sin respuesta IA registrada.'}
-              </p>
-            )}
-          </div>
-
-          <div>
-            <div className="mb-2 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <label className="block text-sm font-medium text-gray-500">
-                  Respuesta con Experto IA
-                </label>
-                <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-[11px] font-medium text-gray-600">
-                  Prompt: {currentRespuestaExpertoPromptBadgeLabel}
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleOpenRespuestaExpertoPromptPreview}
-                  disabled={loadingRespuestaExpertoPromptPreview}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-[#111318] hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
-                  title="Ver prompt que usa IA para respuesta con experto"
-                >
-                  <span className="material-symbols-outlined text-base leading-none">
-                    {loadingRespuestaExpertoPromptPreview ? 'hourglass_top' : 'visibility'}
-                  </span>
-                </button>
-
-                {isEditing && (
-                  <button
-                    type="button"
-                    onClick={handleGenerateRespuestaExpertoIa}
-                    disabled={generatingRespuestaExpertoIa || saving}
-                    className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-[#111318] hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
-                    title="Generar respuesta con Experto IA"
-                  >
-                    <span className="material-symbols-outlined text-base leading-none">
-                      {generatingRespuestaExpertoIa ? 'hourglass_top' : 'smart_toy'}
-                    </span>
-                    <span>
-                      {generatingRespuestaExpertoIa ? 'Generando con IA...' : 'Generar con IA'}
-                    </span>
-                  </button>
-                )}
-              </div>
-            </div>
-            {aiRespuestaExpertoMessage && (
-              <p className="mb-2 text-xs text-emerald-700">{aiRespuestaExpertoMessage}</p>
-            )}
-            {isEditing ? (
-              <textarea
-                rows={5}
-                value={draft.respuesta_experto_ia}
-                onChange={(event) =>
-                  setDraft((prev) =>
-                    prev
-                      ? {
-                          ...prev,
-                          respuesta_experto_ia: event.target.value,
-                        }
-                      : prev
-                  )
-                }
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
-                placeholder="Escribe o ajusta la respuesta con Experto IA para esta observación"
-              />
-            ) : (
-              <p className="text-sm text-[#111318] leading-relaxed whitespace-pre-wrap">
-                {pregunta.respuesta_experto_ia || 'Sin respuesta con Experto IA registrada.'}
               </p>
             )}
           </div>
@@ -1817,10 +1358,10 @@ const PreguntaDetailView: React.FC = () => {
         </div>
       )}
 
-      {showRespuestaPromptPreview && (
+      {showRespuestaIaRequestPreview && (
         <div
           className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
-          onClick={handleCloseRespuestaPromptPreview}
+          onClick={handleCloseRespuestaIaRequestPreview}
         >
           <div
             className="bg-white rounded-xl w-full max-w-4xl border border-gray-200 shadow-xl"
@@ -1829,223 +1370,84 @@ const PreguntaDetailView: React.FC = () => {
             <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between gap-3">
               <div>
                 <h3 className="text-lg font-semibold text-[#111318]">
-                  Prompt usado por IA (Respuesta IA)
+                  Solicitud enviada a la API (Respuesta IA)
                 </h3>
                 <p className="text-xs text-gray-500">
-                  {respuestaPromptPreviewUsingCatalog
-                    ? `${respuestaPromptPreviewName}${
-                        respuestaPromptPreviewVersion
-                          ? ` v${respuestaPromptPreviewVersion}`
-                          : ''
-                      } (version activa)`
-                    : `Sin prompt activo en catalogo para "${respuestaPromptPreviewName}". Se usa plantilla base.`}
+                  Vista previa de lo que se enviara al endpoint al presionar "Generar con IA".
                 </p>
               </div>
               <button
                 type="button"
-                onClick={handleCloseRespuestaPromptPreview}
+                onClick={handleCloseRespuestaIaRequestPreview}
                 className="p-1 rounded hover:bg-gray-100"
-                aria-label="Cerrar visor de prompt de respuesta"
+                aria-label="Cerrar visor de solicitud de respuesta IA"
               >
                 <span className="material-symbols-outlined text-gray-500">close</span>
               </button>
             </div>
 
-            <div className="p-4">
-              <div className="mb-4">
-                <label className="block text-xs font-medium text-gray-700 mb-2">
-                  Prompt a utilizar en Respuesta IA
-                </label>
-                <select
-                  value={selectedRespuestaPromptCatalogId}
-                  onChange={(event) => {
-                    void handleRespuestaPromptSelectionChange(event.target.value);
-                  }}
-                  disabled={loadingPromptCatalogOptions || loadingRespuestaPromptPreview}
-                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-[#111318] focus:ring-2 focus:ring-primary focus:border-primary disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  <option value="">
-                    Predeterminado: {DEFAULT_RESPUESTA_PROMPT_NAME} (ultimo activo)
-                  </option>
-                  {promptCatalogOptions.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {getPromptOptionLabel(item)}
-                    </option>
-                  ))}
-                </select>
-                {promptCatalogOptionsError && (
-                  <p className="mt-2 text-xs text-red-600">{promptCatalogOptionsError}</p>
-                )}
-              </div>
-
-              {loadingRespuestaPromptPreview ? (
-                <div className="h-56 flex items-center justify-center">
-                  <div className="text-center">
-                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary mb-2"></div>
-                    <p className="text-sm text-gray-600">Cargando prompt...</p>
-                  </div>
-                </div>
-              ) : respuestaPromptPreviewError ? (
+            <div className="p-4 space-y-3">
+              {!selectedNotebookExperto?.notebook_id && (
                 <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                  {respuestaPromptPreviewError}
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-2">
-                      PRO (Prompt seleccionado)
-                    </p>
-                    <pre className="max-h-52 overflow-auto whitespace-pre-wrap text-xs leading-relaxed text-[#111318] font-mono">
-                      {respuestaPromptPreviewPromptSection ||
-                        'Sin prompt de catálogo (se enviarán pregunta + estrategia).'}
-                    </pre>
-                  </div>
-
-                  <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-2">
-                      Pregunta Enviada
-                    </p>
-                    <pre className="max-h-44 overflow-auto whitespace-pre-wrap text-xs leading-relaxed text-[#111318] font-mono">
-                      {respuestaPromptPreviewQuestionSection || 'Sin pregunta.'}
-                    </pre>
-                  </div>
-
-                  <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-2">
-                      Estrategia Enviada
-                    </p>
-                    <pre className="max-h-44 overflow-auto whitespace-pre-wrap text-xs leading-relaxed text-[#111318] font-mono">
-                      {respuestaPromptPreviewStrategySection || 'Sin estrategia.'}
-                    </pre>
-                  </div>
-
-                  <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-2">
-                      Payload Final (enviado a la API)
-                    </p>
-                    <pre className="max-h-56 overflow-auto whitespace-pre-wrap text-xs leading-relaxed text-[#111318] font-mono">
-                      {respuestaPromptPreview}
-                    </pre>
-                  </div>
+                  Debes seleccionar un experto con notebook_id valido para generar Respuesta IA.
                 </div>
               )}
-            </div>
-          </div>
-        </div>
-      )}
+              {!respuestaIaPayloadInput && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+                  Falta contenido para enviar: debes tener Pregunta y Estrategia en esta sección.
+                </div>
+              )}
 
-      {showRespuestaExpertoPromptPreview && (
-        <div
-          className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
-          onClick={handleCloseRespuestaExpertoPromptPreview}
-        >
-          <div
-            className="bg-white rounded-xl w-full max-w-4xl border border-gray-200 shadow-xl"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between gap-3">
-              <div>
-                <h3 className="text-lg font-semibold text-[#111318]">
-                  Prompt usado por IA (Respuesta con Experto IA)
-                </h3>
-                <p className="text-xs text-gray-500">
-                  {respuestaExpertoPromptPreviewUsingCatalog
-                    ? `${respuestaExpertoPromptPreviewName}${
-                        respuestaExpertoPromptPreviewVersion
-                          ? ` v${respuestaExpertoPromptPreviewVersion}`
-                          : ''
-                      } (version activa)`
-                    : `Sin prompt activo en catalogo para "${respuestaExpertoPromptPreviewName}". Se usa plantilla base.`}
+              <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-2">
+                  Destino
                 </p>
-              </div>
-              <button
-                type="button"
-                onClick={handleCloseRespuestaExpertoPromptPreview}
-                className="p-1 rounded hover:bg-gray-100"
-                aria-label="Cerrar visor de prompt de respuesta con experto"
-              >
-                <span className="material-symbols-outlined text-gray-500">close</span>
-              </button>
-            </div>
-
-            <div className="p-4">
-              <div className="mb-4">
-                <label className="block text-xs font-medium text-gray-700 mb-2">
-                  Prompt a utilizar en Respuesta con Experto IA
-                </label>
-                <select
-                  value={selectedRespuestaExpertoPromptCatalogId}
-                  onChange={(event) => {
-                    void handleRespuestaExpertoPromptSelectionChange(event.target.value);
-                  }}
-                  disabled={loadingPromptCatalogOptions || loadingRespuestaExpertoPromptPreview}
-                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-[#111318] focus:ring-2 focus:ring-primary focus:border-primary disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  <option value="">
-                    Predeterminado: {DEFAULT_RESPUESTA_EXPERTO_PROMPT_NAME} (ultimo activo)
-                  </option>
-                  {promptCatalogOptions.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {getPromptOptionLabel(item)}
-                    </option>
-                  ))}
-                </select>
-                {promptCatalogOptionsError && (
-                  <p className="mt-2 text-xs text-red-600">{promptCatalogOptionsError}</p>
-                )}
+                <pre className="max-h-44 overflow-auto whitespace-pre-wrap text-xs leading-relaxed text-[#111318] font-mono">
+                  {selectedNotebookExperto
+                    ? [
+                        `Experto: ${selectedNotebookExperto.nombre}`,
+                        `Notebook ID: ${selectedNotebookExperto.notebook_id || '(sin valor)'}`,
+                        `Endpoint: ${respuestaIaEndpointPreview || '(sin endpoint)'}`,
+                      ].join('\n')
+                    : 'Sin experto seleccionado.'}
+                </pre>
               </div>
 
-              {loadingRespuestaExpertoPromptPreview ? (
-                <div className="h-56 flex items-center justify-center">
-                  <div className="text-center">
-                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary mb-2"></div>
-                    <p className="text-sm text-gray-600">Cargando prompt...</p>
-                  </div>
-                </div>
-              ) : respuestaExpertoPromptPreviewError ? (
-                <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                  {respuestaExpertoPromptPreviewError}
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-2">
-                      PRO (Prompt seleccionado)
-                    </p>
-                    <pre className="max-h-52 overflow-auto whitespace-pre-wrap text-xs leading-relaxed text-[#111318] font-mono">
-                      {respuestaExpertoPromptPreviewPromptSection ||
-                        'Sin prompt de catálogo (se enviarán pregunta + estrategia).'}
-                    </pre>
-                  </div>
+              <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-2">
+                  Pregunta enviada
+                </p>
+                <pre className="max-h-52 overflow-auto whitespace-pre-wrap text-xs leading-relaxed text-[#111318] font-mono">
+                  {respuestaIaPayloadInput?.preguntaTexto || 'Sin pregunta.'}
+                </pre>
+              </div>
 
-                  <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-2">
-                      Pregunta Enviada
-                    </p>
-                    <pre className="max-h-44 overflow-auto whitespace-pre-wrap text-xs leading-relaxed text-[#111318] font-mono">
-                      {respuestaExpertoPromptPreviewQuestionSection || 'Sin pregunta.'}
-                    </pre>
-                  </div>
+              <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-2">
+                  Estrategia enviada
+                </p>
+                <pre className="max-h-52 overflow-auto whitespace-pre-wrap text-xs leading-relaxed text-[#111318] font-mono">
+                  {respuestaIaPayloadInput?.estrategiaTexto || 'Sin estrategia.'}
+                </pre>
+              </div>
 
-                  <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-2">
-                      Estrategia Enviada
-                    </p>
-                    <pre className="max-h-44 overflow-auto whitespace-pre-wrap text-xs leading-relaxed text-[#111318] font-mono">
-                      {respuestaExpertoPromptPreviewStrategySection || 'Sin estrategia.'}
-                    </pre>
-                  </div>
+              <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-2">
+                  Texto final enviado al notebook
+                </p>
+                <pre className="max-h-52 overflow-auto whitespace-pre-wrap text-xs leading-relaxed text-[#111318] font-mono">
+                  {respuestaIaInputPreview || 'Sin contenido.'}
+                </pre>
+              </div>
 
-                  <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-2">
-                      Payload Final (enviado a la API)
-                    </p>
-                    <pre className="max-h-56 overflow-auto whitespace-pre-wrap text-xs leading-relaxed text-[#111318] font-mono">
-                      {respuestaExpertoPromptPreview}
-                    </pre>
-                  </div>
-                </div>
-              )}
+              <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-2">
+                  Payloads enviados (intentos en orden)
+                </p>
+                <pre className="max-h-64 overflow-auto whitespace-pre-wrap text-xs leading-relaxed text-[#111318] font-mono">
+                  {JSON.stringify(respuestaIaPayloadCandidates, null, 2)}
+                </pre>
+              </div>
             </div>
           </div>
         </div>

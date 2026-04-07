@@ -276,6 +276,46 @@ const EvaluacionesTabla: React.FC = () => {
     }).format(value);
   };
 
+  const openEvaluacionDetalle = (servicio: ServicioEvaluado) => {
+    const evaluacionOriginal = evaluaciones.find((item) => item.id === servicio.id);
+    if (!evaluacionOriginal) {
+      return;
+    }
+
+    let rutaEvaluacion = 'evaluacion';
+
+    if (servicio.fechaEvaluacion) {
+      const fechaEvaluacion = new Date(servicio.fechaEvaluacion);
+      if (!Number.isNaN(fechaEvaluacion.getTime()) && fechaEvaluacion.getFullYear() <= 2025) {
+        rutaEvaluacion = 'evaluacion-2025';
+      }
+    }
+
+    navigate(getAreaPath(rutaEvaluacion), {
+      state: {
+        evaluacionData: evaluacionOriginal,
+        returnPath: getAreaPath('evaluaciones-tabla'),
+        readOnly: true,
+      },
+    });
+  };
+
+  const openProveedorFiltrado = (servicio: ServicioEvaluado) => {
+    const rut = servicio.rut?.trim() || '';
+    if (rut) {
+      navigate(`${getAreaPath('actuales')}?rut=${encodeURIComponent(rut)}`);
+      return;
+    }
+
+    const nombreProveedor = servicio.nombreProveedor?.trim() || '';
+    if (nombreProveedor) {
+      navigate(`${getAreaPath('actuales')}?proveedor=${encodeURIComponent(nombreProveedor)}`);
+      return;
+    }
+
+    navigate(getAreaPath('actuales'));
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-[#f8fafc] p-4 lg:p-8 flex items-center justify-center">
@@ -455,15 +495,7 @@ const EvaluacionesTabla: React.FC = () => {
                     <tr
                       key={servicio.id}
                       className="border-b border-gray-100 hover:bg-gray-50 transition-colors cursor-pointer"
-                      onClick={() => {
-                        if (servicio.rut) {
-                          const rut = encodeURIComponent(servicio.rut.trim());
-                          navigate(`${getAreaPath('actuales')}?rut=${rut}`);
-                          return;
-                        }
-
-                        navigate(getAreaPath('actuales'));
-                      }}
+                      onClick={() => openEvaluacionDetalle(servicio)}
                     >
                       <td className="py-4 px-6">
                         {servicio.fechaEvaluacion ? (
@@ -480,7 +512,17 @@ const EvaluacionesTabla: React.FC = () => {
                       </td>
                       <td className="py-4 px-6">
                         <div className="flex flex-col">
-                          <span className="font-medium text-[#111318]">{servicio.nombreProveedor}</span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openProveedorFiltrado(servicio);
+                            }}
+                            className="w-fit text-left font-medium text-[#111318] hover:text-green-600 hover:underline transition-colors"
+                            title="Ir a proveedores filtrado por este proveedor"
+                          >
+                            {servicio.nombreProveedor}
+                          </button>
                           {servicio.rut && (
                             <span className="text-xs text-gray-500">RUT: {servicio.rut}</span>
                           )}
@@ -573,29 +615,7 @@ const EvaluacionesTabla: React.FC = () => {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            const evaluacionOriginal = evaluaciones.find(e => e.id === servicio.id);
-                            if (evaluacionOriginal) {
-                              // Determinar la ruta según el año de la fecha de evaluación
-                              let rutaEvaluacion = 'evaluacion'; // Por defecto, vista normal (2026+)
-                              
-                              if (servicio.fechaEvaluacion) {
-                                const fechaEvaluacion = new Date(servicio.fechaEvaluacion);
-                                const añoEvaluacion = fechaEvaluacion.getFullYear();
-                                
-                                // Si es 2025 o menor, usar la vista 2025
-                                if (añoEvaluacion <= 2025) {
-                                  rutaEvaluacion = 'evaluacion-2025';
-                                }
-                              }
-                              
-                              navigate(getAreaPath(rutaEvaluacion), {
-                                state: {
-                                  evaluacionData: evaluacionOriginal,
-                                  returnPath: getAreaPath('evaluaciones-tabla'),
-                                  readOnly: true
-                                }
-                              });
-                            }
+                            openEvaluacionDetalle(servicio);
                           }}
                           className="p-2 text-primary hover:bg-primary/10 rounded-lg transition-colors"
                           title="Ver detalles"

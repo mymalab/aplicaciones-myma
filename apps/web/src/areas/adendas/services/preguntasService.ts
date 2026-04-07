@@ -1,6 +1,7 @@
 import { supabase } from '@shared/api-client/supabase';
 import type {
   CatalogoEspecialidad,
+  CatalogoNotebookExperto,
   CatalogoPersona,
   ComplejidadPregunta,
   EstadoPregunta,
@@ -717,6 +718,67 @@ export const fetchCatalogoEspecialidades = async (): Promise<CatalogoEspecialida
   }));
 };
 
+export const fetchCatalogoNotebookExpertos = async (): Promise<CatalogoNotebookExperto[]> => {
+  const parseRows = (
+    rows: Array<Record<string, unknown>> | null
+  ): CatalogoNotebookExperto[] => {
+    const normalizeString = (value: unknown): string =>
+      typeof value === 'string' ? value.trim() : '';
+
+    const mapped = (rows || [])
+      .map((row) => {
+        const nombre = normalizeString(row.nombre);
+        const notebookId =
+          normalizeString(row.notebooklm_id) ||
+          normalizeString(row.notebook_id) ||
+          (typeof row.id === 'number' || typeof row.id === 'string'
+            ? String(row.id).trim()
+            : '');
+        const id =
+          (typeof row.id === 'number' || typeof row.id === 'string'
+            ? String(row.id).trim()
+            : '') || notebookId;
+
+        return {
+          id,
+          nombre,
+          notebook_id: notebookId,
+        };
+      })
+      .filter((item) => item.nombre && item.notebook_id);
+
+    const uniqueByNotebookId = new Map<string, CatalogoNotebookExperto>();
+    for (const item of mapped) {
+      if (!uniqueByNotebookId.has(item.notebook_id)) {
+        uniqueByNotebookId.set(item.notebook_id, item);
+      }
+    }
+
+    return Array.from(uniqueByNotebookId.values());
+  };
+
+  const attempts = [
+    'id,nombre,notebooklm_id',
+    'id,nombre,notebook_id',
+    'id,nombre',
+  ];
+
+  let lastError: unknown = null;
+  for (const selectClause of attempts) {
+    const { data, error } = await supabase
+      .from('dim_adenda_notebook_experto')
+      .select(selectClause)
+      .order('nombre', { ascending: true });
+
+    if (!error) {
+      return parseRows((data || null) as unknown as Array<Record<string, unknown>> | null);
+    }
+    lastError = error;
+  }
+
+  throw lastError;
+};
+
 export const fetchPreguntasCatalogos = async (): Promise<PreguntasCatalogos> => {
   const [personas, especialidades] = await Promise.all([
     fetchCatalogoPersonasActivas(),
@@ -897,7 +959,7 @@ const getNotebookIdByAdendaId = async (adendaId: number): Promise<string> => {
   return notebookId;
 };
 
-const buildNotebookPromptCandidates = (prompt: string) => [
+export const buildNotebookChatPayloadCandidates = (prompt: string) => [
   { question: prompt },
   { prompt },
   { message: prompt },
@@ -1015,11 +1077,24 @@ export const generateEstrategiaFromNotebookChat = async (
   }
 
   const notebookId = await getNotebookIdByAdendaId(adendaId);
+  return generateNotebookChatByNotebookId(notebookId, normalizedPrompt, 'estrategia');
+};
+
+const generateNotebookChatByNotebookId = async (
+  notebookId: string,
+  prompt: string,
+  contextLabel: 'estrategia' | 'respuesta IA'
+): Promise<string> => {
+  const normalizedNotebookId = notebookId.trim();
+  if (!normalizedNotebookId) {
+    throw new Error('No se recibio un notebook_id valido para realizar la solicitud.');
+  }
+
   const endpoint = `${ADENDAS_NOTEBOOK_CHAT_BASE_URL}/notebooks/${encodeURIComponent(
-    notebookId
+    normalizedNotebookId
   )}/chat`;
 
-  const payloadCandidates = buildNotebookPromptCandidates(normalizedPrompt);
+  const payloadCandidates = buildNotebookChatPayloadCandidates(prompt);
   const errors: string[] = [];
 
   for (const payload of payloadCandidates) {
@@ -1091,5 +1166,24 @@ export const generateEstrategiaFromNotebookChat = async (
   }
 
   const firstError = errors[0] || 'No fue posible obtener respuesta desde la API de chat.';
+  if (contextLabel === 'respuesta IA') {
+    throw new Error(`No se pudo generar la respuesta IA. ${firstError}`);
+  }
   throw new Error(`No se pudo generar la estrategia con IA. ${firstError}`);
+};
+
+export const generateRespuestaIaFromNotebookChatByNotebookId = async (
+  notebookId: string,
+  input: string
+): Promise<string> => {
+  const prompt = input.trim();
+  if (!prompt) {
+    throw new Error('Debes escribir un texto en Respuesta IA para enviarlo al notebook.');
+  }
+
+  if (!ADENDAS_NOTEBOOK_CHAT_BASE_URL) {
+    throw new Error('No hay baseUrl configurada para el chat de notebooks.');
+  }
+
+  return generateNotebookChatByNotebookId(notebookId, prompt, 'respuesta IA');
 };

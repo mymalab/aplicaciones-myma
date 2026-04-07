@@ -51,6 +51,12 @@ export interface CatalogoEspecialidad {
   nombre_especialidad: string;
 }
 
+export interface CatalogoNotebookExperto {
+  id: string;
+  nombre: string;
+  notebook_id: string;
+}
+
 export interface PreguntaAdjunto {
   id: number;
   question_id: number;

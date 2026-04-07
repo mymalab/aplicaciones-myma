@@ -379,6 +379,21 @@ const ProveedoresActuales: React.FC = () => {
     setSearchParams(nextParams, { replace: true });
   }, [searchParams, setSearchParams]);
 
+  // Leer parametro de proveedor de la URL y aplicarlo al buscador
+  useEffect(() => {
+    const proveedorParam = searchParams.get('proveedor');
+    if (!proveedorParam) {
+      return;
+    }
+
+    setSearchTerm(proveedorParam);
+    setCurrentPage(1);
+
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete('proveedor');
+    setSearchParams(nextParams, { replace: true });
+  }, [searchParams, setSearchParams]);
+
   // Leer parAmetro de clasificaciAn de la URL
   useEffect(() => {
     const clasificacionParam = searchParams.get('clasificacion');
