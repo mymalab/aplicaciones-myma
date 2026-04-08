@@ -28,10 +28,18 @@ const debugWarn = (...args: unknown[]) => {
   }
 };
 
+const AREAS_WITHOUT_RBAC: AreaId[] = [AreaId.NOTEBOOKLM];
+
 const getAllowedAreas = (userPermissions: PermissionsByModule): AreaId[] => {
   const allowedAreas: AreaId[] = [];
 
-  Object.values(AreaId).forEach((areaId) => {
+  (Object.values(AreaId) as AreaId[]).forEach((areaId) => {
+    if (AREAS_WITHOUT_RBAC.includes(areaId)) {
+      allowedAreas.push(areaId);
+      debugLog(`Area ${areaId} permitida sin RBAC`);
+      return;
+    }
+
     const hasAccess = hasAreaAccess(userPermissions, areaId);
 
     debugLog(`Verificando área ${areaId}:`, {
@@ -120,7 +128,7 @@ export const useAreas = () => {
         console.error('Error fetching user areas:', err);
         if (!mounted) return;
         setError(err?.message || 'Error al cargar áreas permitidas');
-        setAreas([]);
+        setAreas(getAllowedAreas({}));
       } finally {
         if (mounted && showLoading) {
           setLoading(false);

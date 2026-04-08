@@ -13,6 +13,7 @@ import AcreditacionRoutes from '@areas/acreditacion/routes';
 import ProveedoresRoutes from '@areas/proveedores/routes';
 import PersonasRoutes from '@areas/personas/routes';
 import AdendasRoutes from '@areas/adendas/routes';
+import NotebookLMRoutes from '@areas/notebooklm/routes';
 import AppHomeView from './pages/AppHomeView';
 import { AreaId } from '@contracts/areas';
 
@@ -29,6 +30,8 @@ const AreaRoutes: React.FC = () => {
       return <PersonasRoutes />;
     case AreaId.ADENDAS:
       return <AdendasRoutes />;
+    case AreaId.NOTEBOOKLM:
+      return <NotebookLMRoutes />;
     default:
       return <AcreditacionRoutes />;
   }

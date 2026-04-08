@@ -60,6 +60,7 @@ export const AREA_PERMISSIONS: Record<AreaId, AreaPermission[]> = {
     'adendas:delete',
     'adendas:admin',
   ],
+  [AreaId.NOTEBOOKLM]: [],
 };
 
 /**

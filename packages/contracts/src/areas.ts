@@ -9,6 +9,7 @@ export enum AreaId {
   OPERACIONES = 'operaciones',
   PERSONAS = 'personas',
   ADENDAS = 'adendas',
+  NOTEBOOKLM = 'notebooklm',
 }
 
 export interface Area {
@@ -62,6 +63,13 @@ export const AREAS: Record<AreaId, Area> = {
     icon: 'edit_document',
     description: 'Gestión de adendas y adendas complementarias',
   },
+  [AreaId.NOTEBOOKLM]: {
+    id: AreaId.NOTEBOOKLM,
+    name: 'notebooklm',
+    displayName: 'NotebookLM',
+    icon: 'auto_stories',
+    description: 'Creacion de notebooks desde documentos ambientales',
+  },
 };
 
 export type AreaPermission = string;
@@ -71,4 +79,3 @@ export interface UserAreaPermission {
   areaId: AreaId;
   permissions: AreaPermission[];
 }
-

@@ -244,6 +244,7 @@ const getAreaModuleAliases = (areaId: AreaId): string[] => {
     [AreaId.ADENDAS]: ['adenda', 'adendas'],
     [AreaId.FINANZAS]: ['finanza', 'finanzas'],
     [AreaId.OPERACIONES]: ['operacion', 'operaciones'],
+    [AreaId.NOTEBOOKLM]: ['notebooklm', 'notebook', 'notebooks'],
   };
 
   const area = AREAS[areaId];

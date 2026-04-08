@@ -8,6 +8,7 @@ import AcreditacionSidebar from '@areas/acreditacion/components/Sidebar';
 import ProveedoresSidebar from '@areas/proveedores/components/Sidebar';
 import PersonasSidebar from '@areas/personas/components/Sidebar';
 import AdendasSidebar from '@areas/adendas/components/Sidebar';
+import NotebookLMSidebar from '@areas/notebooklm/components/Sidebar';
 
 interface AreaLayoutProps {
   children: React.ReactNode;
@@ -84,6 +85,15 @@ const AreaLayout: React.FC<AreaLayoutProps> = ({ children }) => {
       case AreaId.ADENDAS:
         return (
           <AdendasSidebar
+            isOpen={sidebarOpen}
+            onClose={() => setSidebarOpen(false)}
+            activeView={getActiveView() as any}
+            hideOnDesktop={isFilterSidebarOpen}
+          />
+        );
+      case AreaId.NOTEBOOKLM:
+        return (
+          <NotebookLMSidebar
             isOpen={sidebarOpen}
             onClose={() => setSidebarOpen(false)}
             activeView={getActiveView() as any}
