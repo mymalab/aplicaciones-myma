@@ -109,6 +109,7 @@ const NotebookLMView: React.FC = () => {
   const [domStatus, setDomStatus] = useState<DomPollingStatus>('idle');
   const [domProgress, setDomProgress] = useState<DownloadSeiaDocumentsStatusResponse | null>(null);
   const [domDocuments, setDomDocuments] = useState<DownloadSeiaDocumentItem[]>([]);
+  const [selectedDomDocumentIds, setSelectedDomDocumentIds] = useState<string[]>([]);
 
   useEffect(() => {
     let mounted = true;
@@ -218,6 +219,12 @@ const NotebookLMView: React.FC = () => {
     notebookTargetMode === 'existing'
       ? selectedNotebook?.nombre || 'Notebook existente'
       : newNotebookName.trim() || 'Notebook nuevo';
+  const moduleTwoActionLabel = notebookTargetMode === 'new' ? 'Crear' : 'Guardar';
+  const moduleTwoActionIcon = notebookTargetMode === 'new' ? 'note_add' : 'save';
+  const isModuleTwoActionDisabled =
+    notebookTargetMode === 'new'
+      ? !newNotebookName.trim()
+      : !selectedNotebookCatalogId || loadingNotebooks || availableNotebooks.length === 0;
 
   const documentColumns = useMemo(() => {
     const keys = new Set<string>();
@@ -226,6 +233,19 @@ const NotebookLMView: React.FC = () => {
     });
     return Array.from(keys);
   }, [domDocuments]);
+
+  const domDocumentsWithIds = useMemo(
+    () =>
+      domDocuments.map((document, index) => ({
+        clientId: `${index}-${String(document.document_id ?? document.url_origen ?? document.nombre_archivo ?? 'doc')}`,
+        document,
+      })),
+    [domDocuments]
+  );
+
+  const allDomDocumentsSelected =
+    domDocumentsWithIds.length > 0 &&
+    domDocumentsWithIds.every((item) => selectedDomDocumentIds.includes(item.clientId));
 
   const toggleKeyword = (keyword: string) => {
     setSelectedKeywords((current) =>
@@ -304,6 +324,7 @@ const NotebookLMView: React.FC = () => {
     setDomStatus('running');
     setDomProgress(null);
     setDomDocuments([]);
+    setSelectedDomDocumentIds([]);
     setIsGeneratingDom(true);
 
     try {
@@ -345,6 +366,7 @@ const NotebookLMView: React.FC = () => {
         const normalizedStatus = String(nextStatus.status || 'running').toLowerCase();
         setDomProgress(nextStatus);
         setDomDocuments(Array.isArray(nextStatus.documents) ? nextStatus.documents : []);
+        setSelectedDomDocumentIds([]);
 
         if (
           normalizedStatus === 'listed' ||
@@ -387,15 +409,45 @@ const NotebookLMView: React.FC = () => {
     };
   }, [domRunId]);
 
+  const toggleDomDocumentSelection = (clientId: string) => {
+    setSelectedDomDocumentIds((current) =>
+      current.includes(clientId)
+        ? current.filter((id) => id !== clientId)
+        : [...current, clientId]
+    );
+  };
+
+  const toggleSelectAllDomDocuments = () => {
+    setSelectedDomDocumentIds((current) =>
+      allDomDocumentsSelected ? [] : domDocumentsWithIds.map((item) => item.clientId)
+    );
+  };
+
+  const handleDeleteSelectedDomDocuments = () => {
+    if (selectedDomDocumentIds.length === 0) {
+      return;
+    }
+
+    const selectedSet = new Set(selectedDomDocumentIds);
+    setDomDocuments((current) =>
+      current.filter((document, index) => {
+        const clientId = `${index}-${String(document.document_id ?? document.url_origen ?? document.nombre_archivo ?? 'doc')}`;
+        return !selectedSet.has(clientId);
+      })
+    );
+    setSelectedDomDocumentIds([]);
+  };
+
+  const handleConfirmDomSelection = () => {
+    setActiveModule('02');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   return (
     <div className="w-full min-h-screen bg-[#f8fafc] p-4 md:p-6">
       <form onSubmit={handleSubmit} className="mx-auto w-full max-w-7xl">
         <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <div className="mb-3 inline-flex items-center gap-2 rounded-lg border border-teal-200 bg-teal-50 px-3 py-1 text-sm font-medium text-teal-700">
-              <span className="material-symbols-outlined text-base">auto_stories</span>
-              NotebookLM
-            </div>
             <h1 className="text-3xl font-bold text-[#111318]">Crear Notebook</h1>
             <p className="mt-2 max-w-2xl text-sm text-[#616f89]">
               Descarga, filtra, carga y comparte documentos ambientales desde un solo flujo.
@@ -490,7 +542,8 @@ const NotebookLMView: React.FC = () => {
                       Descarga y filtrado
                     </h2>
                     <p className="mt-1 text-sm text-[#616f89]">
-                      Pega la URL del documento, define su tipo y marca las palabras que aplican.
+                      Pega la URL del documento, define su tipo y marca las palabras que contienen
+                      los documentos que quieres eliminar.
                     </p>
                   </div>
                 </div>
@@ -550,7 +603,8 @@ const NotebookLMView: React.FC = () => {
               <div className="mt-5">
                 <p className="text-sm font-semibold text-gray-700">Si aplica</p>
                 <p className="mt-1 text-sm text-[#616f89]">
-                  Selecciona una o varias palabras y agrega las que falten.
+                  Selecciona una o varias palabras que identifiquen los documentos que quieres
+                  eliminar y agrega las que falten.
                 </p>
 
                 <div className="mt-3 flex flex-wrap gap-2">
@@ -649,50 +703,6 @@ const NotebookLMView: React.FC = () => {
                         </span>
                       </div>
                     </div>
-
-                    {domStatus === 'listed' && (
-                      <div className="mt-4">
-                        <p className="text-sm font-semibold text-[#111318]">
-                          Documentos listados ({domDocuments.length})
-                        </p>
-                        {domDocuments.length > 0 ? (
-                          <div className="mt-3 overflow-x-auto rounded-lg border border-gray-200 bg-white">
-                            <table className="min-w-full divide-y divide-gray-200 text-sm">
-                              <thead className="bg-gray-50">
-                                <tr>
-                                  {documentColumns.map((column) => (
-                                    <th
-                                      key={column}
-                                      className="px-3 py-2 text-left font-semibold uppercase tracking-wide text-[#616f89]"
-                                    >
-                                      {column}
-                                    </th>
-                                  ))}
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-gray-100">
-                                {domDocuments.map((document, index) => (
-                                  <tr key={`${index}-${String(document.url || document.nombre || 'doc')}`}>
-                                    {documentColumns.map((column) => (
-                                      <td
-                                        key={column}
-                                        className="px-3 py-2 align-top text-[#111318]"
-                                      >
-                                        {String(document[column] ?? '')}
-                                      </td>
-                                    ))}
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        ) : (
-                          <p className="mt-2 text-sm text-[#616f89]">
-                            La API termino en estado `listed`, pero no devolvio documentos.
-                          </p>
-                        )}
-                      </div>
-                    )}
 
                     {(domStatus === 'success' || domStatus === 'partial_success') && (
                       <div className="mt-4 rounded-lg border border-teal-200 bg-teal-50 p-3 text-sm text-teal-800">
@@ -839,6 +849,19 @@ const NotebookLMView: React.FC = () => {
                   )}
                 </div>
               )}
+
+              <div className="mt-5 flex justify-end">
+                <button
+                  type="submit"
+                  disabled={isModuleTwoActionDisabled}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#059669] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#047857] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <span className="material-symbols-outlined text-base">
+                    {moduleTwoActionIcon}
+                  </span>
+                  {moduleTwoActionLabel}
+                </button>
+              </div>
             </section>
             )}
 
@@ -1027,6 +1050,95 @@ const NotebookLMView: React.FC = () => {
             </div>
           </aside>
         </div>
+
+        {domStatus === 'listed' && (
+          <section className="mt-4 rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-[#111318]">
+                  Documentos listados ({domDocuments.length})
+                </h2>
+                <p className="mt-1 text-sm text-[#616f89]">
+                  Selecciona filas para limpiar la tabla mostrada en pantalla.
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <button
+                  type="button"
+                  onClick={handleConfirmDomSelection}
+                  className="inline-flex items-center justify-center rounded-lg bg-[#059669] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#047857]"
+                >
+                  Confirmar y pasar al Modulo 2
+                </button>
+                <button
+                  type="button"
+                  onClick={toggleSelectAllDomDocuments}
+                  className="inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-[#111318] transition-colors hover:border-primary hover:bg-gray-50"
+                >
+                  {allDomDocumentsSelected ? 'Deseleccionar todo' : 'Seleccionar todo'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteSelectedDomDocuments}
+                  disabled={selectedDomDocumentIds.length === 0}
+                  className="inline-flex items-center justify-center rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Eliminar seleccionados ({selectedDomDocumentIds.length})
+                </button>
+              </div>
+            </div>
+
+            {domDocuments.length > 0 ? (
+              <div className="mt-4 overflow-x-auto rounded-lg border border-gray-200 bg-white">
+                <table className="min-w-full divide-y divide-gray-200 text-sm">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="w-14 px-3 py-2 text-left font-semibold uppercase tracking-wide text-[#616f89]">
+                        Sel.
+                      </th>
+                      {documentColumns.map((column) => (
+                        <th
+                          key={column}
+                          className="px-3 py-2 text-left font-semibold uppercase tracking-wide text-[#616f89]"
+                        >
+                          {column}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {domDocumentsWithIds.map(({ clientId, document }) => {
+                      const isSelected = selectedDomDocumentIds.includes(clientId);
+
+                      return (
+                        <tr key={clientId} className={isSelected ? 'bg-teal-50' : 'bg-white'}>
+                          <td className="px-3 py-2 align-top">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => toggleDomDocumentSelection(clientId)}
+                              className="mt-1 h-4 w-4 rounded border-gray-300 text-[#059669] focus:ring-[#059669]"
+                            />
+                          </td>
+                          {documentColumns.map((column) => (
+                            <td key={column} className="px-3 py-2 align-top text-[#111318]">
+                              {String(document[column] ?? '')}
+                            </td>
+                          ))}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="mt-4 text-sm text-[#616f89]">
+                No quedan documentos visibles en la tabla.
+              </p>
+            )}
+          </section>
+        )}
       </form>
     </div>
   );
