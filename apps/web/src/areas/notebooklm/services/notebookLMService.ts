@@ -97,6 +97,10 @@ export interface DownloadRetryDocumentsZipResponse {
   filename: string;
 }
 
+export interface DownloadSelectedDocumentsZipPayload {
+  selected_document_ids: string[];
+}
+
 export type NotebookSharePermission = 'viewer' | 'editor';
 
 export interface ShareNotebookUserPayload {
@@ -756,6 +760,84 @@ export const downloadRetryDocumentsZip = async (
   const filename =
     getFilenameFromContentDisposition(response.headers.get('content-disposition')) ||
     `documentos-fallidos-${normalizedRunId.slice(0, 8) || 'corrida'}.zip`;
+
+  return {
+    blob,
+    filename,
+  };
+};
+
+export const downloadSelectedDocumentsZip = async (
+  runId: string,
+  payload: DownloadSelectedDocumentsZipPayload
+): Promise<DownloadRetryDocumentsZipResponse> => {
+  const normalizedRunId = runId.trim();
+  if (!normalizedRunId) {
+    throw new Error('No se recibio un run_id valido para descargar el zip de documentos.');
+  }
+
+  const normalizedDocumentIds = Array.from(
+    new Set(payload.selected_document_ids.map(normalizeString).filter(Boolean))
+  );
+  if (normalizedDocumentIds.length === 0) {
+    throw new Error('No se recibieron documentos validos para descargar el zip.');
+  }
+
+  const endpoint = `${NOTEBOOK_LM_LOCAL_API_BASE_URL}/api/v1/adenda/descarga-documentos-seia/${encodeURIComponent(
+    normalizedRunId
+  )}/documentos-seleccionados.zip`;
+
+  let response: Response;
+  try {
+    response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/zip, application/octet-stream',
+        ...(NOTEBOOK_LM_LOCAL_API_BEARER_TOKEN
+          ? {
+              Authorization: `Bearer ${NOTEBOOK_LM_LOCAL_API_BEARER_TOKEN}`,
+            }
+          : {}),
+      },
+      body: JSON.stringify({
+        selected_document_ids: normalizedDocumentIds,
+      }),
+    });
+  } catch (error) {
+    if (error instanceof TypeError && error.message === 'Failed to fetch') {
+      throw new Error(
+        `No se pudo conectar con ${endpoint}. Verifica que la API local este disponible.`
+      );
+    }
+
+    throw error;
+  }
+
+  if (!response.ok) {
+    const rawBody = await response.text();
+
+    let parsedBody: unknown = null;
+    if (rawBody) {
+      try {
+        parsedBody = JSON.parse(rawBody) as unknown;
+      } catch {
+        parsedBody = rawBody;
+      }
+    }
+
+    const apiMessage =
+      typeof parsedBody === 'object' && parsedBody && 'detail' in parsedBody
+        ? String((parsedBody as { detail?: unknown }).detail)
+        : rawBody || `${response.status} ${response.statusText}`;
+
+    throw new Error(`Error al descargar el zip de documentos: ${apiMessage}`);
+  }
+
+  const blob = await response.blob();
+  const filename =
+    getFilenameFromContentDisposition(response.headers.get('content-disposition')) ||
+    `documentos-para-notebook-${normalizedRunId.slice(0, 8) || 'corrida'}.zip`;
 
   return {
     blob,

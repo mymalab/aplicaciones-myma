@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   createAndLoadNotebookFiltered,
+  downloadSelectedDocumentsZip,
   downloadRetryDocumentsZip,
   downloadSeiaDocuments,
   fetchNotebookAuthorizedPeople,
@@ -328,6 +329,7 @@ const NotebookLMView: React.FC = () => {
   const [isSubmittingNotebook, setIsSubmittingNotebook] = useState(false);
   const [isRetryingNotebookUpload, setIsRetryingNotebookUpload] = useState(false);
   const [isDownloadingRetryDocuments, setIsDownloadingRetryDocuments] = useState(false);
+  const [isDownloadingSelectedDocuments, setIsDownloadingSelectedDocuments] = useState(false);
   const [pendingNotebookUpload, setPendingNotebookUpload] =
     useState<PendingNotebookUpload | null>(null);
 
@@ -587,6 +589,10 @@ const NotebookLMView: React.FC = () => {
     !!domRunId.trim() &&
     shouldShowManualRetryDownload &&
     !isDownloadingRetryDocuments;
+  const canDownloadSelectedDocuments =
+    !!domRunId.trim() &&
+    filteredDocumentIds.length > 0 &&
+    !isDownloadingSelectedDocuments;
 
   const notebookUploadDocumentStats = useMemo(() => {
     const summary = {
@@ -1062,6 +1068,37 @@ const NotebookLMView: React.FC = () => {
       );
     } finally {
       setIsDownloadingRetryDocuments(false);
+    }
+  };
+
+  const handleDownloadSelectedDocuments = async () => {
+    if (!canDownloadSelectedDocuments) {
+      return;
+    }
+
+    setErrorMessage('');
+    setIsDownloadingSelectedDocuments(true);
+
+    try {
+      const { blob, filename } = await downloadSelectedDocumentsZip(domRunId, {
+        selected_document_ids: filteredDocumentIds,
+      });
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const anchor = window.document.createElement('a');
+      anchor.href = downloadUrl;
+      anchor.download = filename;
+      window.document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : 'No pudimos descargar el zip de documentos visibles.'
+      );
+    } finally {
+      setIsDownloadingSelectedDocuments(false);
     }
   };
 
@@ -2138,7 +2175,8 @@ const NotebookLMView: React.FC = () => {
                   Documentos listados ({domDocuments.length})
                 </h2>
                 <p className="mt-1 text-sm text-[#616f89]">
-                  Selecciona filas para limpiar la tabla mostrada en pantalla.
+                  Selecciona filas para limpiar la tabla mostrada en pantalla o descarga un
+                  ZIP con los nombres preparados para NotebookLM.
                 </p>
               </div>
 
@@ -2149,6 +2187,17 @@ const NotebookLMView: React.FC = () => {
                   className="inline-flex items-center justify-center rounded-lg bg-[#059669] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#047857]"
                 >
                   Confirmar y pasar al Modulo 2
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDownloadSelectedDocuments}
+                  disabled={!canDownloadSelectedDocuments}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700 transition-colors hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <span className="material-symbols-outlined text-[18px]">folder_zip</span>
+                  {isDownloadingSelectedDocuments
+                    ? 'Preparando ZIP...'
+                    : `Descargar ZIP visibles (${filteredDocumentIds.length})`}
                 </button>
                 <button
                   type="button"
