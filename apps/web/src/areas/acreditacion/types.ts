@@ -67,6 +67,16 @@ export interface Cliente {
   updated_at?: string;
 }
 
+export interface ClienteContacto {
+  id: number;
+  nombre_completo: string;
+  correo: string;
+  cliente: string;
+  cliente_id: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface ResponsableRequerimiento {
   id: number;
   nombre_responsable: string;

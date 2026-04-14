@@ -8,6 +8,7 @@ import {
   SolicitudAcreditacion,
   ProjectGalleryItem,
   Cliente,
+  ClienteContacto,
   EmpresaRequerimiento,
   ProyectoRequerimientoAcreditacion,
   ResponsableRequerimiento,
@@ -43,6 +44,13 @@ export interface UpsertTrabajadorExternoInput {
   empresa_razon_social: string;
   empresa_rut: string;
   correo?: string | null;
+}
+
+interface CreateClienteContactoInput {
+  nombre_completo: string;
+  correo: string;
+  cliente: string;
+  cliente_id: number;
 }
 
 export const normalizeRut = (value: string | null | undefined): string =>
@@ -508,6 +516,42 @@ export const fetchClientes = async (): Promise<Cliente[]> => {
 };
 
 // Función para obtener todos los responsables de requerimiento
+// FunciÃ³n para obtener los contactos asociados a un cliente
+export const fetchContactosClienteByClienteId = async (
+  clienteId: number
+): Promise<ClienteContacto[]> => {
+  const { data, error } = await supabase
+    .from('dim_acreditacion_info_contacto_cliente')
+    .select('*')
+    .eq('cliente_id', clienteId)
+    .order('nombre_completo', { ascending: true });
+
+  if (error) {
+    console.error('Error fetching contactos del cliente:', error);
+    throw error;
+  }
+
+  return data || [];
+};
+
+export const createContactoCliente = async (
+  payload: CreateClienteContactoInput
+): Promise<ClienteContacto> => {
+  const { data, error } = await supabase
+    .from('dim_acreditacion_info_contacto_cliente')
+    .insert(payload)
+    .select('*')
+    .single();
+
+  if (error || !data) {
+    console.error('Error creating contacto del cliente:', error);
+    throw error || new Error('No se pudo crear el contacto del cliente');
+  }
+
+  return data;
+};
+
+// FunciÃ³n para obtener todos los responsables de requerimiento
 export const fetchResponsablesRequerimiento = async (): Promise<ResponsableRequerimiento[]> => {
   const { data, error } = await supabase
     .from('responsable_requerimiento')

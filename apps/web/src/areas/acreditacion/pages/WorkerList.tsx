@@ -176,32 +176,30 @@ export const WorkerList: React.FC<WorkerListProps> = ({
     };
   }, [showDropdown, showExternalDropdown]);
 
-  const handleSelectPersona = (persona: Persona) => {
-    setSelectedPersona(persona);
-    setSearchQuery(`${persona.nombre_completo} - ${persona.rut}`);
-    setShowDropdown(false);
-  };
-
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchQuery(e.target.value);
     setSelectedPersona(null);
     setShowDropdown(true);
   };
 
-  const handleExternalSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setExternalSearchQuery(e.target.value);
-    setSelectedExternalWorker(null);
-    setManualRut('');
-    setManualTelefono('');
-    setShowExternalDropdown(true);
-  };
+  const shouldUseDirectManualContractorMode =
+    requireCompanySelection &&
+    !loadingExternalWorkers &&
+    Boolean(selectedCompany || selectedCompanyRut) &&
+    externalWorkers.length === 0;
 
-  const handleSelectExternalWorker = (worker: TrabajadorExterno) => {
-    setSelectedExternalWorker(worker);
-    setExternalSearchQuery(`${worker.nombre_completo} - ${formatRut(worker.rut)}`);
-    setManualRut('');
-    setManualTelefono('');
-    setShowExternalDropdown(false);
+  const handleExternalSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+
+    setExternalSearchQuery(value);
+
+    if (selectedExternalWorker) {
+      setSelectedExternalWorker(null);
+      setManualRut('');
+      setManualTelefono('');
+    }
+
+    setShowExternalDropdown(!shouldUseDirectManualContractorMode);
   };
 
   const resetContractorInputs = () => {
@@ -219,6 +217,82 @@ export const WorkerList: React.FC<WorkerListProps> = ({
     return workers.some((worker) => normalizeRut(worker.rut) === targetRut);
   };
 
+  const addInternalWorkerFromPersona = (persona: Persona): boolean => {
+    if (targetWorkerCount > 0 && workers.length >= targetWorkerCount) {
+      setSelectedPersona(persona);
+      setSearchQuery(`${persona.nombre_completo} - ${persona.rut}`);
+      setShowDropdown(false);
+      alert(`Ya se alcanzo la cantidad objetivo de ${targetWorkerCount} trabajadores`);
+      return false;
+    }
+
+    const newWorker: Worker = {
+      id: Date.now().toString(),
+      name: persona.nombre_completo,
+      type: WorkerType.INTERNAL,
+      phone: persona.telefono || '+56 9 XXXX XXXX',
+      company: undefined,
+      rut: persona.rut,
+      personaId: persona.id,
+    };
+
+    onAddWorker(newWorker);
+    setSearchQuery('');
+    setSelectedPersona(null);
+    setShowDropdown(false);
+    return true;
+  };
+
+  const handleSelectPersona = (persona: Persona) => {
+    addInternalWorkerFromPersona(persona);
+  };
+
+  const addExternalWorkerFromSelection = (worker: TrabajadorExterno): boolean => {
+    if (!selectedCompany) {
+      setSelectedExternalWorker(worker);
+      setExternalSearchQuery(`${worker.nombre_completo} - ${formatRut(worker.rut)}`);
+      setShowExternalDropdown(false);
+      alert('Por favor seleccione una empresa contratista');
+      return false;
+    }
+
+    if (targetWorkerCount > 0 && workers.length >= targetWorkerCount) {
+      setSelectedExternalWorker(worker);
+      setExternalSearchQuery(`${worker.nombre_completo} - ${formatRut(worker.rut)}`);
+      setShowExternalDropdown(false);
+      alert(`Ya se alcanzo la cantidad objetivo de ${targetWorkerCount} trabajadores`);
+      return false;
+    }
+
+    const selectedRut = formatRut(worker.rut);
+
+    if (hasDuplicateRutInList(selectedRut)) {
+      setSelectedExternalWorker(worker);
+      setExternalSearchQuery(`${worker.nombre_completo} - ${selectedRut}`);
+      setShowExternalDropdown(false);
+      alert('Ya existe un trabajador con ese RUT en la lista.');
+      return false;
+    }
+
+    const newWorker: Worker = {
+      id: Date.now().toString(),
+      name: worker.nombre_completo,
+      type: WorkerType.EXTERNAL,
+      company: selectedCompany,
+      phone: (worker.telefono || '').trim() || 'Sin contacto',
+      rut: selectedRut,
+      syncExternalOnSave: false,
+    };
+
+    onAddWorker(newWorker);
+    resetContractorInputs();
+    return true;
+  };
+
+  const handleSelectExternalWorker = (worker: TrabajadorExterno) => {
+    addExternalWorkerFromSelection(worker);
+  };
+
   const handleAdd = async () => {
     if (requireCompanySelection && !selectedCompany) {
       alert('Por favor seleccione una empresa contratista');
@@ -232,25 +306,7 @@ export const WorkerList: React.FC<WorkerListProps> = ({
 
     if (requireCompanySelection) {
       if (selectedExternalWorker) {
-        const selectedRut = formatRut(selectedExternalWorker.rut);
-
-        if (hasDuplicateRutInList(selectedRut)) {
-          alert('Ya existe un trabajador con ese RUT en la lista.');
-          return;
-        }
-
-        const newWorker: Worker = {
-          id: Date.now().toString(),
-          name: selectedExternalWorker.nombre_completo,
-          type: WorkerType.EXTERNAL,
-          company: selectedCompany,
-          phone: (selectedExternalWorker.telefono || '').trim() || 'Sin contacto',
-          rut: selectedRut,
-          syncExternalOnSave: false,
-        };
-
-        onAddWorker(newWorker);
-        resetContractorInputs();
+        addExternalWorkerFromSelection(selectedExternalWorker);
         return;
       }
 
@@ -315,27 +371,25 @@ export const WorkerList: React.FC<WorkerListProps> = ({
       return;
     }
 
-    const newWorker: Worker = {
-      id: Date.now().toString(),
-      name: selectedPersona.nombre_completo,
-      type: WorkerType.INTERNAL,
-      phone: selectedPersona.telefono || '+56 9 XXXX XXXX',
-      company: undefined,
-      rut: selectedPersona.rut,
-      personaId: selectedPersona.id,
-    };
-
-    onAddWorker(newWorker);
-    setSearchQuery('');
-    setSelectedPersona(null);
+    addInternalWorkerFromPersona(selectedPersona);
   };
 
   const shouldShowManualContractorFields = useMemo(() => {
     if (!requireCompanySelection) return false;
 
+    if (shouldUseDirectManualContractorMode) {
+      return true;
+    }
+
     const hasQuery = externalSearchQuery.trim().length > 0;
     return hasQuery && !selectedExternalWorker && filteredExternalWorkers.length === 0;
-  }, [requireCompanySelection, externalSearchQuery, selectedExternalWorker, filteredExternalWorkers.length]);
+  }, [
+    requireCompanySelection,
+    shouldUseDirectManualContractorMode,
+    externalSearchQuery,
+    selectedExternalWorker,
+    filteredExternalWorkers.length,
+  ]);
 
   const contractorSearchSpan = shouldShowManualContractorFields ? 'md:col-span-4' : 'md:col-span-9';
   const contractorButtonSpan = shouldShowManualContractorFields ? 'md:col-span-2' : 'md:col-span-3';
@@ -434,7 +488,9 @@ export const WorkerList: React.FC<WorkerListProps> = ({
         <h4 className="text-[#111318] text-sm font-bold">Agregar Trabajadores</h4>
         <p className="text-xs text-[#616f89]">
           {requireCompanySelection
-            ? 'Busque trabajadores externos de la empresa seleccionada. Si no existen coincidencias, podra ingresar RUT y telefono manualmente.'
+            ? shouldUseDirectManualContractorMode
+              ? 'Esta empresa no tiene trabajadores externos cargados. Ingrese nombre, RUT y telefono manualmente.'
+              : 'Busque trabajadores externos de la empresa seleccionada. Si no existen coincidencias, podra ingresar RUT y telefono manualmente.'
             : 'Agregue colaboradores a la lista. Puede buscar trabajadores internos existentes.'}
         </p>
       </div>
@@ -500,20 +556,30 @@ export const WorkerList: React.FC<WorkerListProps> = ({
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
-        {requireCompanySelection ? (
-          <>
+      {requireCompanySelection ? (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
             <div className={`${contractorSearchSpan} flex flex-col gap-2 relative`}>
               <span className="text-[#111318] text-xs font-semibold">Nombre *</span>
               <div className="relative">
-                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-[#616f89] text-base">search</span>
+                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-[#616f89] text-base">
+                  {shouldUseDirectManualContractorMode ? 'person' : 'search'}
+                </span>
                 <input
                   id="contractor_worker_search"
                   type="text"
                   value={externalSearchQuery}
                   onChange={handleExternalSearchChange}
-                  onFocus={() => setShowExternalDropdown(true)}
-                  placeholder="Buscar trabajador externo por nombre o RUT..."
+                  onFocus={() => {
+                    if (!shouldUseDirectManualContractorMode) {
+                      setShowExternalDropdown(true);
+                    }
+                  }}
+                  placeholder={
+                    shouldUseDirectManualContractorMode
+                      ? 'Nombre del trabajador externo'
+                      : 'Buscar trabajador externo por nombre o RUT...'
+                  }
                   autoComplete="off"
                   className="form-input w-full rounded-lg border border-[#dbdfe6] bg-white px-3 py-2.5 pl-10 pr-10 text-sm text-[#111318] placeholder-[#616f89] focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all"
                 />
@@ -522,7 +588,7 @@ export const WorkerList: React.FC<WorkerListProps> = ({
                     type="button"
                     onClick={() => {
                       resetContractorInputs();
-                      setShowExternalDropdown(true);
+                      setShowExternalDropdown(!shouldUseDirectManualContractorMode);
                     }}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                   >
@@ -531,7 +597,7 @@ export const WorkerList: React.FC<WorkerListProps> = ({
                 )}
               </div>
 
-              {showExternalDropdown && (
+              {!shouldUseDirectManualContractorMode && showExternalDropdown && (
                 <div className="dropdown-results-external absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto top-full">
                   {loadingExternalWorkers ? (
                     <div className="px-4 py-3 text-sm text-gray-500 text-center">Cargando trabajadores...</div>
@@ -593,10 +659,17 @@ export const WorkerList: React.FC<WorkerListProps> = ({
                 <span>Agregar a lista</span>
               </button>
             </div>
-          </>
-        ) : (
-          <>
-            <div className="md:col-span-9 flex flex-col gap-2 relative">
+          </div>
+
+          {shouldUseDirectManualContractorMode && (
+            <p className="text-xs text-amber-700">
+              No hay trabajadores asociados a esta empresa contratista. Completa los datos manualmente del trabajador para agregarlo.
+            </p>
+          )}
+        </>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+          <div className="md:col-span-9 flex flex-col gap-2 relative">
               <span className="text-[#111318] text-xs font-semibold">Buscar / Nombre</span>
               <div className="relative">
                 <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-[#616f89] text-base">search</span>
@@ -660,9 +733,8 @@ export const WorkerList: React.FC<WorkerListProps> = ({
                 <span>Agregar a lista</span>
               </button>
             </div>
-          </>
-        )}
-      </div>
+        </div>
+      )}
 
       <div className="mt-4 flex flex-col gap-2">
         <div className="flex items-center justify-between">

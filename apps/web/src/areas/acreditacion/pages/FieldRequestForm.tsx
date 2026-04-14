@@ -7,6 +7,7 @@ import {
   MOCK_COMPANIES,
   Persona,
   Cliente,
+  ClienteContacto,
   ProveedorAcreditacion,
   FieldRequestFormSnapshot,
   SOLICITUD_ACREDITACION_STATUS,
@@ -27,6 +28,8 @@ import {
   crearCarpetasProyecto,
   enviarIdProyectoN8n,
   upsertTrabajadoresExternos,
+  fetchContactosClienteByClienteId,
+  createContactoCliente,
 } from '../services/acreditacionService';
 import { supabase } from '@shared/api-client/supabase';
 
@@ -70,6 +73,15 @@ const FALLBACK_PROVEEDORES: ProveedorAcreditacion[] = MOCK_COMPANIES.map((compan
   nombre_proveedor: company.name,
   rut: '',
 }));
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const normalizeComparableText = (value: string | null | undefined): string =>
+  (value || '').trim().toLowerCase();
+
+const sortContactosCliente = (rows: ClienteContacto[]): ClienteContacto[] =>
+  [...rows].sort((a, b) =>
+    (a.nombre_completo || '').localeCompare(b.nombre_completo || '', 'es', { sensitivity: 'base' })
+  );
 
 const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
   onBack,
@@ -166,6 +178,17 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
   const [searchQueryCliente, setSearchQueryCliente] = useState('');
   const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null);
   const [showDropdownCliente, setShowDropdownCliente] = useState(false);
+  const [contactosCliente, setContactosCliente] = useState<ClienteContacto[]>([]);
+  const [filteredContactosCliente, setFilteredContactosCliente] = useState<ClienteContacto[]>([]);
+  const [searchQueryContactoCliente, setSearchQueryContactoCliente] = useState('');
+  const [selectedContactoCliente, setSelectedContactoCliente] = useState<ClienteContacto | null>(null);
+  const [showDropdownContactoCliente, setShowDropdownContactoCliente] = useState(false);
+  const [isLoadingContactosCliente, setIsLoadingContactosCliente] = useState(false);
+  const [isSavingContactoCliente, setIsSavingContactoCliente] = useState(false);
+  const [contactoClienteFeedback, setContactoClienteFeedback] = useState<{
+    type: 'success' | 'error';
+    message: string;
+  } | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [solicitudPrueba, setSolicitudPrueba] = useState(false);
   const [omitirCamposObligatorios, setOmitirCamposObligatorios] = useState(false);
@@ -230,15 +253,18 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
     setSearchQueryJefeProyecto(initialSnapshot.formData.projectManager || '');
     setSearchQueryAdminContrato(initialSnapshot.formData.contractAdmin || '');
     setSearchQueryCliente(initialSnapshot.formData.clientName || '');
+    setSearchQueryContactoCliente(initialSnapshot.formData.clientContactName || '');
 
     setSelectedPersonaSolicitante(null);
     setSelectedPersonaJefeProyecto(null);
     setSelectedPersonaAdminContrato(null);
     setSelectedCliente(null);
+    setSelectedContactoCliente(null);
     setShowDropdownSolicitante(false);
     setShowDropdownJefeProyecto(false);
     setShowDropdownAdminContrato(false);
     setShowDropdownCliente(false);
+    setShowDropdownContactoCliente(false);
   }, [isViewMode, initialSnapshot]);
 
   // Limpiar todos los campos cuando se monta el componente
@@ -404,6 +430,100 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
       setSearchQueryCliente('');
     }
   }, [formData.clientName, clientes, showDropdownCliente]);
+
+  useEffect(() => {
+    const clienteId = selectedCliente?.id;
+
+    if (!clienteId) {
+      setContactosCliente([]);
+      setFilteredContactosCliente([]);
+      setSelectedContactoCliente(null);
+      setIsLoadingContactosCliente(false);
+      setContactoClienteFeedback(null);
+      return;
+    }
+
+    let isMounted = true;
+    setIsLoadingContactosCliente(true);
+    setContactoClienteFeedback(null);
+
+    const loadContactosCliente = async () => {
+      try {
+        const data = await fetchContactosClienteByClienteId(clienteId);
+
+        if (!isMounted) return;
+
+        const contactos = sortContactosCliente(data);
+        setContactosCliente(contactos);
+        setFilteredContactosCliente(contactos);
+      } catch (error) {
+        if (!isMounted) return;
+        console.error('Error cargando contactos del cliente:', error);
+        setContactosCliente([]);
+        setFilteredContactosCliente([]);
+      } finally {
+        if (isMounted) {
+          setIsLoadingContactosCliente(false);
+        }
+      }
+    };
+
+    loadContactosCliente();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedCliente?.id]);
+
+  useEffect(() => {
+    if (searchQueryContactoCliente.trim() === '') {
+      setFilteredContactosCliente(contactosCliente);
+      return;
+    }
+
+    const query = searchQueryContactoCliente.toLowerCase();
+    const filtered = contactosCliente.filter(contacto =>
+      (contacto.nombre_completo || '').toLowerCase().includes(query) ||
+      (contacto.correo || '').toLowerCase().includes(query)
+    );
+
+    setFilteredContactosCliente(filtered);
+  }, [searchQueryContactoCliente, contactosCliente]);
+
+  useEffect(() => {
+    const normalizedEmail = normalizeComparableText(formData.clientContactEmail);
+
+    if (formData.clientContactName.trim() !== '') {
+      if (!normalizedEmail) {
+        setSelectedContactoCliente(null);
+        setSearchQueryContactoCliente(formData.clientContactName);
+        return;
+      }
+
+      const contactoEncontrado = contactosCliente.find(
+        contacto => normalizeComparableText(contacto.correo) === normalizedEmail
+      );
+
+      if (contactoEncontrado) {
+        setSelectedContactoCliente(contactoEncontrado);
+        setSearchQueryContactoCliente(contactoEncontrado.nombre_completo);
+      } else {
+        setSelectedContactoCliente(null);
+        setSearchQueryContactoCliente(formData.clientContactName);
+      }
+      return;
+    }
+
+    if (!showDropdownContactoCliente) {
+      setSelectedContactoCliente(null);
+      setSearchQueryContactoCliente('');
+    }
+  }, [
+    formData.clientContactName,
+    formData.clientContactEmail,
+    contactosCliente,
+    showDropdownContactoCliente,
+  ]);
 
   // Clave para el almacenamiento del formulario
   const STORAGE_KEY = 'field_request_form_draft';
@@ -671,6 +791,26 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
     };
   }, [showDropdownCliente]);
 
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (
+        !target.closest('#contacto_cliente_search') &&
+        !target.closest('.dropdown-results-contacto-cliente')
+      ) {
+        setShowDropdownContactoCliente(false);
+      }
+    };
+
+    if (showDropdownContactoCliente) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showDropdownContactoCliente]);
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
 
@@ -773,6 +913,169 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
           return newVehiculos.slice(0, cantidad);
         }
       });
+    }
+  };
+
+  const handleSelectCliente = (cliente: Cliente | null) => {
+    setSelectedCliente(cliente);
+    setSearchQueryCliente(cliente?.nombre || '');
+    setShowDropdownCliente(false);
+    setContactosCliente([]);
+    setFilteredContactosCliente([]);
+    setSelectedContactoCliente(null);
+    setSearchQueryContactoCliente('');
+    setShowDropdownContactoCliente(false);
+    setContactoClienteFeedback(null);
+    setFormData(prev => ({
+      ...prev,
+      clientName: cliente?.nombre || '',
+      clientContactName: '',
+      clientContactEmail: '',
+    }));
+  };
+
+  const handleClientContactNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setSearchQueryContactoCliente(value);
+    setSelectedContactoCliente(null);
+    setContactoClienteFeedback(null);
+    setShowDropdownContactoCliente(Boolean(selectedCliente));
+    setFormData(prev => ({
+      ...prev,
+      clientContactName: value,
+    }));
+  };
+
+  const handleClientContactEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setSelectedContactoCliente(null);
+    setContactoClienteFeedback(null);
+    setFormData(prev => ({
+      ...prev,
+      clientContactEmail: value,
+    }));
+  };
+
+  const isValidClientContactEmail = (value: string): boolean => EMAIL_REGEX.test(value.trim());
+
+  const findMatchingClientContactInList = (
+    contactList: ClienteContacto[],
+    name: string,
+    email: string
+  ): ClienteContacto | null => {
+    const normalizedName = normalizeComparableText(name);
+    const normalizedEmail = normalizeComparableText(email);
+
+    if (!normalizedName && !normalizedEmail) {
+      return null;
+    }
+
+    return (
+      contactList.find(contacto => {
+        const contactoNombre = normalizeComparableText(contacto.nombre_completo);
+        const contactoCorreo = normalizeComparableText(contacto.correo);
+
+        if (normalizedEmail && contactoCorreo === normalizedEmail) {
+          return true;
+        }
+
+        if (!normalizedEmail && normalizedName && contactoNombre === normalizedName) {
+          return true;
+        }
+
+        return false;
+      }) || null
+    );
+  };
+
+  const findMatchingClientContact = (name: string, email: string): ClienteContacto | null =>
+    findMatchingClientContactInList(contactosCliente, name, email);
+
+  const persistClientContactIfNeeded = async (
+    options: { silent?: boolean } = {}
+  ): Promise<ClienteContacto | null> => {
+    if (!selectedCliente) {
+      return null;
+    }
+
+    const nombreCompleto = formData.clientContactName.trim();
+    const correo = formData.clientContactEmail.trim();
+
+    if (!nombreCompleto || !correo || !isValidClientContactEmail(correo)) {
+      return null;
+    }
+
+    let contactosDisponibles = contactosCliente;
+
+    if (isLoadingContactosCliente || contactosDisponibles.length === 0) {
+      try {
+        const remoteContacts = sortContactosCliente(
+          await fetchContactosClienteByClienteId(selectedCliente.id)
+        );
+        contactosDisponibles = remoteContacts;
+        setContactosCliente(remoteContacts);
+        setFilteredContactosCliente(remoteContacts);
+      } catch (error) {
+        console.error('Error sincronizando contactos del cliente antes de guardar:', error);
+      }
+    }
+
+    const existingContact = findMatchingClientContactInList(contactosDisponibles, nombreCompleto, correo);
+    if (existingContact) {
+      setSelectedContactoCliente(existingContact);
+      setSearchQueryContactoCliente(existingContact.nombre_completo);
+      setContactoClienteFeedback({
+        type: 'success',
+        message: 'El contacto ya existe para el cliente seleccionado.',
+      });
+      setFormData(prev => ({
+        ...prev,
+        clientContactName: existingContact.nombre_completo,
+        clientContactEmail: existingContact.correo,
+      }));
+      return existingContact;
+    }
+
+    try {
+      setIsSavingContactoCliente(true);
+
+      const nuevoContacto = await createContactoCliente({
+        nombre_completo: nombreCompleto,
+        correo,
+        cliente: selectedCliente.nombre,
+        cliente_id: selectedCliente.id,
+      });
+
+      setContactosCliente(prev => sortContactosCliente([...prev, nuevoContacto]));
+      setSelectedContactoCliente(nuevoContacto);
+      setSearchQueryContactoCliente(nuevoContacto.nombre_completo);
+      setShowDropdownContactoCliente(false);
+      setContactoClienteFeedback({
+        type: 'success',
+        message: 'Nuevo contacto guardado para este cliente.',
+      });
+      setFormData(prev => ({
+        ...prev,
+        clientContactName: nuevoContacto.nombre_completo,
+        clientContactEmail: nuevoContacto.correo,
+      }));
+
+      return nuevoContacto;
+    } catch (error) {
+      console.error('Error guardando contacto del cliente:', error);
+
+      setContactoClienteFeedback({
+        type: 'error',
+        message: 'No se pudo guardar el contacto del cliente.',
+      });
+
+      if (!options.silent) {
+        alert('No se pudo guardar el contacto del cliente. Revisa los datos e inténtalo nuevamente.');
+      }
+
+      return null;
+    } finally {
+      setIsSavingContactoCliente(false);
     }
   };
 
@@ -1009,6 +1312,8 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
         return;
       }
       }
+
+      await persistClientContactIfNeeded({ silent: true });
 
       const requiereAcreditarEmpresa = formData.companyAccreditationRequired === 'yes';
       const esContratoMarco = formData.esContratoMarco === 'yes';
@@ -1534,6 +1839,53 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
       setTargetWorkerCountMyma(trabajadoresAleatorios.length);
     }
   };
+
+  const matchingClientContact = findMatchingClientContact(
+    formData.clientContactName,
+    formData.clientContactEmail
+  );
+  const canSaveClientContact =
+    !isViewMode &&
+    Boolean(selectedCliente) &&
+    Boolean(formData.clientContactName.trim()) &&
+    Boolean(formData.clientContactEmail.trim()) &&
+    isValidClientContactEmail(formData.clientContactEmail) &&
+    !matchingClientContact;
+
+  let clientContactHelperMessage = 'Selecciona un cliente del listado para ver y guardar sus contactos.';
+  let clientContactHelperClass = 'text-[#616f89]';
+
+  if (selectedCliente) {
+    clientContactHelperMessage = 'Busca un contacto existente o escribe uno nuevo para este cliente.';
+  }
+
+  if (isLoadingContactosCliente) {
+    clientContactHelperMessage = 'Cargando contactos guardados para este cliente...';
+  } else if (contactoClienteFeedback) {
+    clientContactHelperMessage = contactoClienteFeedback.message;
+    clientContactHelperClass =
+      contactoClienteFeedback.type === 'error' ? 'text-red-600' : 'text-emerald-700';
+  } else if (
+    selectedCliente &&
+    formData.clientContactEmail.trim() &&
+    !isValidClientContactEmail(formData.clientContactEmail)
+  ) {
+    clientContactHelperMessage = 'Ingresa un correo valido para poder guardar el contacto.';
+    clientContactHelperClass = 'text-amber-700';
+  } else if (selectedContactoCliente) {
+    clientContactHelperMessage = 'Contacto seleccionado desde la tabla del cliente.';
+    clientContactHelperClass = 'text-emerald-700';
+  } else if (selectedCliente && matchingClientContact) {
+    clientContactHelperMessage = 'Este contacto ya existe para el cliente seleccionado.';
+    clientContactHelperClass = 'text-emerald-700';
+  } else if (selectedCliente && contactosCliente.length === 0) {
+    clientContactHelperMessage =
+      'Este cliente aun no tiene contactos guardados. Puedes crear el primero con estos campos.';
+  } else if (selectedCliente) {
+    clientContactHelperMessage = `${contactosCliente.length} contacto${
+      contactosCliente.length === 1 ? '' : 's'
+    } disponible${contactosCliente.length === 1 ? '' : 's'} para este cliente.`;
+  }
 
   const renderCondicionesLaboralesSection = () => (
     <div className="rounded-xl border border-[#e5e7eb] bg-white shadow-sm">
@@ -2144,7 +2496,18 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
                       setSearchQueryCliente(e.target.value);
                       setSelectedCliente(null);
                       setShowDropdownCliente(true);
-                      setFormData(prev => ({ ...prev, clientName: '' }));
+                      setContactosCliente([]);
+                      setFilteredContactosCliente([]);
+                      setSelectedContactoCliente(null);
+                      setSearchQueryContactoCliente('');
+                      setShowDropdownContactoCliente(false);
+                      setContactoClienteFeedback(null);
+                      setFormData(prev => ({
+                        ...prev,
+                        clientName: '',
+                        clientContactName: '',
+                        clientContactEmail: '',
+                      }));
                     }}
                     onFocus={() => setShowDropdownCliente(true)}
                     placeholder="Buscar por nombre o RUT..."
@@ -2156,10 +2519,8 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
                     <button
                       type="button"
                       onClick={() => {
-                        setSearchQueryCliente('');
-                        setSelectedCliente(null);
+                        handleSelectCliente(null);
                         setShowDropdownCliente(true);
-                        setFormData(prev => ({ ...prev, clientName: '' }));
                       }}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                     >
@@ -2173,12 +2534,7 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
                           <button
                             key={cliente.id}
                             type="button"
-                            onClick={() => {
-                              setSelectedCliente(cliente);
-                              setSearchQueryCliente(cliente.nombre);
-                              setShowDropdownCliente(false);
-                              setFormData(prev => ({ ...prev, clientName: cliente.nombre }));
-                            }}
+                            onClick={() => handleSelectCliente(cliente)}
                             className={`w-full px-4 py-3 text-left hover:bg-gray-50 border-b border-gray-100 last:border-b-0 transition-colors ${
                               selectedCliente?.id === cliente.id ? 'bg-blue-50' : ''
                             }`}
@@ -2200,18 +2556,102 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
               </label>
               
               <div className="md:col-span-2 flex flex-col gap-3">
-                <span className="text-[#111318] text-sm font-medium">Contactos del Cliente</span>
+                <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+                  <span className="text-[#111318] text-sm font-medium">Contactos del Cliente</span>
+                  {selectedCliente && (
+                    <span className="text-xs text-[#616f89]">
+                      {isLoadingContactosCliente
+                        ? 'Cargando contactos...'
+                        : `${contactosCliente.length} contacto${
+                            contactosCliente.length === 1 ? '' : 's'
+                          } registrado${contactosCliente.length === 1 ? '' : 's'}`}
+                    </span>
+                  )}
+                </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="relative">
-                    <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-base">person</span>
-                    <input 
-                      type="text" 
+                    <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-base">
+                      {selectedCliente ? 'search' : 'person'}
+                    </span>
+                    <input
+                      id="contacto_cliente_search"
+                      type="text"
                       name="clientContactName"
-                      value={formData.clientContactName}
-                      onChange={handleInputChange}
-                      placeholder="Nombre del Contacto"
-                      className="form-input w-full rounded-lg border border-[#dbdfe6] bg-white px-3 py-2.5 text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none pl-10" 
+                      value={selectedContactoCliente ? selectedContactoCliente.nombre_completo : searchQueryContactoCliente}
+                      onChange={handleClientContactNameChange}
+                      onFocus={() => {
+                        if (selectedCliente) {
+                          setShowDropdownContactoCliente(true);
+                        }
+                      }}
+                      placeholder={
+                        selectedCliente
+                          ? 'Buscar o escribir un nuevo contacto'
+                          : 'Selecciona un cliente o escribe el nombre del contacto'
+                      }
+                      autoComplete="off"
+                      className="form-input w-full rounded-lg border border-[#dbdfe6] bg-white px-3 py-2.5 pl-10 pr-10 text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none"
                     />
+                    {searchQueryContactoCliente && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSearchQueryContactoCliente('');
+                          setSelectedContactoCliente(null);
+                          setShowDropdownContactoCliente(Boolean(selectedCliente));
+                          setContactoClienteFeedback(null);
+                          setFormData(prev => ({
+                            ...prev,
+                            clientContactName: '',
+                            clientContactEmail: '',
+                          }));
+                        }}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                      >
+                        <span className="material-symbols-outlined text-[20px]">close</span>
+                      </button>
+                    )}
+                    {showDropdownContactoCliente && selectedCliente && (
+                      <div className="dropdown-results-contacto-cliente absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto top-full">
+                        {isLoadingContactosCliente ? (
+                          <div className="px-4 py-3 text-sm text-gray-500 text-center">
+                            Cargando contactos...
+                          </div>
+                        ) : filteredContactosCliente.length > 0 ? (
+                          filteredContactosCliente.map(contacto => (
+                            <button
+                              key={contacto.id}
+                              type="button"
+                              onClick={() => {
+                                setSelectedContactoCliente(contacto);
+                                setSearchQueryContactoCliente(contacto.nombre_completo);
+                                setShowDropdownContactoCliente(false);
+                                setContactoClienteFeedback(null);
+                                setFormData(prev => ({
+                                  ...prev,
+                                  clientContactName: contacto.nombre_completo,
+                                  clientContactEmail: contacto.correo || '',
+                                }));
+                              }}
+                              className={`w-full px-4 py-3 text-left hover:bg-gray-50 border-b border-gray-100 last:border-b-0 transition-colors ${
+                                selectedContactoCliente?.id === contacto.id ? 'bg-blue-50' : ''
+                              }`}
+                            >
+                              <div className="text-sm font-medium text-gray-900">
+                                {contacto.nombre_completo}
+                              </div>
+                              {contacto.correo && (
+                                <div className="text-xs text-gray-500">{contacto.correo}</div>
+                              )}
+                            </button>
+                          ))
+                        ) : (
+                          <div className="px-4 py-3 text-sm text-gray-500 text-center">
+                            No hay contactos guardados para este cliente
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <div className="relative">
                     <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-base">mail</span>
@@ -2219,11 +2659,28 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
                       type="email" 
                       name="clientContactEmail"
                       value={formData.clientContactEmail}
-                      onChange={handleInputChange}
+                      onChange={handleClientContactEmailChange}
                       placeholder="Correo Electrónico"
                       className="form-input w-full rounded-lg border border-[#dbdfe6] bg-white px-3 py-2.5 text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none pl-10" 
                     />
                   </div>
+                </div>
+                <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                  <p className={`text-xs ${clientContactHelperClass}`}>
+                    {clientContactHelperMessage}
+                  </p>
+                  {canSaveClientContact && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void persistClientContactIfNeeded();
+                      }}
+                      disabled={isSavingContactoCliente}
+                      className="inline-flex items-center justify-center rounded-lg border border-primary/20 bg-primary/10 px-3 py-2 text-xs font-semibold text-primary transition-colors hover:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {isSavingContactoCliente ? 'Guardando...' : 'Guardar nuevo contacto'}
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -3175,6 +3632,3 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
 };
 
 export default FieldRequestForm;
-
-
-
