@@ -59,6 +59,12 @@ interface FieldRequestFormProps {
   };
 }
 
+type HighlightSectionKey =
+  | 'mymaContract'
+  | 'mymaWorkers'
+  | 'contractor'
+  | 'contractorWorkers';
+
 const getTodayDate = (): string => {
   const now = new Date();
   const year = now.getFullYear();
@@ -74,6 +80,12 @@ const FALLBACK_PROVEEDORES: ProveedorAcreditacion[] = MOCK_COMPANIES.map((compan
   rut: '',
 }));
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const INITIAL_SECTION_HIGHLIGHTS: Record<HighlightSectionKey, boolean> = {
+  mymaContract: false,
+  mymaWorkers: false,
+  contractor: false,
+  contractorWorkers: false,
+};
 
 const normalizeComparableText = (value: string | null | undefined): string =>
   (value || '').trim().toLowerCase();
@@ -193,6 +205,9 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
   const [solicitudPrueba, setSolicitudPrueba] = useState(false);
   const [omitirCamposObligatorios, setOmitirCamposObligatorios] = useState(false);
   const [canUseDebugControls, setCanUseDebugControls] = useState(false);
+  const [sectionHighlights, setSectionHighlights] = useState<Record<HighlightSectionKey, boolean>>(
+    INITIAL_SECTION_HIGHLIGHTS
+  );
   const contractorAccreditationAnchorRef = useRef<HTMLDivElement | null>(null);
   const contractorWorkersAccreditationAnchorRef = useRef<HTMLDivElement | null>(null);
   const pendingContractorScrollAnchorRef = useRef<{
@@ -817,6 +832,36 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
     };
   }, [showDropdownContactoCliente]);
 
+  useEffect(() => {
+    const activeHighlights = (Object.keys(sectionHighlights) as HighlightSectionKey[]).filter(
+      (key) => sectionHighlights[key]
+    );
+
+    if (activeHighlights.length === 0) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setSectionHighlights((prev) => {
+        let changed = false;
+        const nextState = { ...prev };
+
+        activeHighlights.forEach((key) => {
+          if (nextState[key]) {
+            nextState[key] = false;
+            changed = true;
+          }
+        });
+
+        return changed ? nextState : prev;
+      });
+    }, 3200);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [sectionHighlights]);
+
   useLayoutEffect(() => {
     if (pendingContractorScrollAnchorRef.current === null) {
       return;
@@ -850,6 +895,22 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
+
+    const highlightSectionByField: Partial<Record<string, HighlightSectionKey>> = {
+      companyAccreditationRequired: 'mymaContract',
+      requiereAcreditarTrabajadoresMyma: 'mymaWorkers',
+      requiereAcreditarContratista: 'contractor',
+      requiereAcreditarTrabajadoresContratista: 'contractorWorkers',
+    };
+
+    const highlightKey = highlightSectionByField[name];
+
+    if (highlightKey) {
+      setSectionHighlights((prev) => ({
+        ...prev,
+        [highlightKey]: value === 'yes',
+      }));
+    }
 
     if (name === 'requiereAcreditarContratista' || name === 'requiereAcreditarTrabajadoresContratista') {
       const anchorElement =
@@ -1938,9 +1999,27 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
     } disponible${contactosCliente.length === 1 ? '' : 's'} para este cliente.`;
   }
 
-  const renderCondicionesLaboralesSection = () => (
-    <div className="rounded-xl border border-[#e5e7eb] bg-white shadow-sm">
-      <div className="border-b border-[#e5e7eb] px-6 py-4 bg-gray-50/50">
+  const getHighlightedSectionCardClassName = (isHighlighted: boolean) =>
+    `rounded-xl border bg-white shadow-sm transition-[border-color,box-shadow] duration-300 ${
+      isHighlighted
+        ? 'border-red-400 shadow-[0_0_0_4px_rgba(248,113,113,0.18)]'
+        : 'border-[#e5e7eb]'
+    }`;
+
+  const getHighlightedSectionHeaderClassName = (isHighlighted: boolean) =>
+    `border-b px-6 py-4 transition-colors duration-300 ${
+      isHighlighted ? 'border-red-200 bg-red-50/70' : 'border-[#e5e7eb] bg-gray-50/50'
+    }`;
+
+  const getHighlightedSectionStyle = (isHighlighted: boolean) =>
+    isHighlighted ? ({ animation: 'requiredSectionBlink 0.8s ease-in-out 4' } as const) : undefined;
+
+  const renderCondicionesLaboralesSection = (isHighlighted = false) => (
+    <div
+      className={getHighlightedSectionCardClassName(isHighlighted)}
+      style={getHighlightedSectionStyle(isHighlighted)}
+    >
+      <div className={getHighlightedSectionHeaderClassName(isHighlighted)}>
         <h3 className="text-[#111318] text-base lg:text-lg font-bold leading-tight flex items-center gap-2">
           <span className="material-symbols-outlined text-primary">schedule</span>
           Condiciones Laborales
@@ -2184,6 +2263,18 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
       )}
 
       <div className="mx-auto flex w-full max-w-[1200px] flex-1 flex-col px-6 py-8 md:px-10 lg:px-12">
+        <style>{`
+          @keyframes requiredSectionBlink {
+            0%, 100% {
+              border-color: #e5e7eb;
+              box-shadow: 0 1px 2px rgba(17, 19, 24, 0.06);
+            }
+            50% {
+              border-color: #ef4444;
+              box-shadow: 0 0 0 4px rgba(248, 113, 113, 0.2);
+            }
+          }
+        `}</style>
         
         {/* Breadcrumb */}
         <div className="mb-6 flex flex-wrap items-center gap-2">
@@ -3032,8 +3123,11 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
           {formData.companyAccreditationRequired === 'yes' && (
             <>
               {/* Section 5: Información del Contrato */}
-              <div className="rounded-xl border border-[#e5e7eb] bg-white shadow-sm">
-            <div className="border-b border-[#e5e7eb] px-6 py-4 bg-gray-50/50">
+              <div
+                className={getHighlightedSectionCardClassName(sectionHighlights.mymaContract)}
+                style={getHighlightedSectionStyle(sectionHighlights.mymaContract)}
+              >
+            <div className={getHighlightedSectionHeaderClassName(sectionHighlights.mymaContract)}>
               <h3 className="text-[#111318] text-base lg:text-lg font-bold leading-tight flex items-center gap-2">
                 <span className="material-symbols-outlined text-primary">description</span>
                 Información del Contrato
@@ -3127,8 +3221,11 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
           {formData.requiereAcreditarTrabajadoresMyma === 'yes' && (
             <>
           {/* Section 6: Información de Trabajadores MYMA */}
-          <div className="rounded-xl border border-[#e5e7eb] bg-white shadow-sm">
-            <div className="border-b border-[#e5e7eb] px-6 py-4 bg-gray-50/50">
+          <div
+            className={getHighlightedSectionCardClassName(sectionHighlights.mymaWorkers)}
+            style={getHighlightedSectionStyle(sectionHighlights.mymaWorkers)}
+          >
+            <div className={getHighlightedSectionHeaderClassName(sectionHighlights.mymaWorkers)}>
               <h3 className="text-[#111318] text-base lg:text-lg font-bold leading-tight flex items-center gap-2">
                 <span className="material-symbols-outlined text-primary">engineering</span>
                 Información de Trabajadores MYMA
@@ -3147,11 +3244,14 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
           </div>
 
           {/* Section 7: Condiciones Laborales */}
-          {renderCondicionesLaboralesSection()}
+          {renderCondicionesLaboralesSection(sectionHighlights.mymaWorkers)}
 
           {/* Section 8: Información de Vehículos */}
-          <div className="rounded-xl border border-[#e5e7eb] bg-white shadow-sm">
-            <div className="border-b border-[#e5e7eb] px-6 py-4 bg-gray-50/50">
+          <div
+            className={getHighlightedSectionCardClassName(sectionHighlights.mymaWorkers)}
+            style={getHighlightedSectionStyle(sectionHighlights.mymaWorkers)}
+          >
+            <div className={getHighlightedSectionHeaderClassName(sectionHighlights.mymaWorkers)}>
               <h3 className="text-[#111318] text-base lg:text-lg font-bold leading-tight flex items-center gap-2">
                 <span className="material-symbols-outlined text-primary">directions_car</span>
                 Información de Vehículos
@@ -3258,8 +3358,11 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
           {formData.requiereAcreditarContratista === 'yes' && (
             <>
           {/* Section 9: Información del Contrato */}
-          <div className="rounded-xl border border-[#e5e7eb] bg-white shadow-sm">
-            <div className="border-b border-[#e5e7eb] px-6 py-4 bg-gray-50/50">
+          <div
+            className={getHighlightedSectionCardClassName(sectionHighlights.contractor)}
+            style={getHighlightedSectionStyle(sectionHighlights.contractor)}
+          >
+            <div className={getHighlightedSectionHeaderClassName(sectionHighlights.contractor)}>
               <h3 className="text-[#111318] text-base lg:text-lg font-bold leading-tight flex items-center gap-2">
                 <span className="material-symbols-outlined text-primary">description</span>
                 Información del Contrato Contratista
@@ -3306,8 +3409,11 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
           </div>
 
           {/* Section 10: Responsable de la Solicitud */}
-          <div className="rounded-xl border border-[#e5e7eb] bg-white shadow-sm">
-            <div className="border-b border-[#e5e7eb] px-6 py-4 bg-gray-50/50">
+          <div
+            className={getHighlightedSectionCardClassName(sectionHighlights.contractor)}
+            style={getHighlightedSectionStyle(sectionHighlights.contractor)}
+          >
+            <div className={getHighlightedSectionHeaderClassName(sectionHighlights.contractor)}>
               <h3 className="text-[#111318] text-base lg:text-lg font-bold leading-tight flex items-center gap-2">
                 <span className="material-symbols-outlined text-primary">person</span>
                 Responsable de la Solicitud Contratista
@@ -3426,8 +3532,11 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
           {formData.requiereAcreditarTrabajadoresContratista === 'yes' && (
             <>
           {/* Section 11: Información de Trabajadores Contratista */}
-          <div className="rounded-xl border border-[#e5e7eb] bg-white shadow-sm">
-            <div className="border-b border-[#e5e7eb] px-6 py-4 bg-gray-50/50">
+          <div
+            className={getHighlightedSectionCardClassName(sectionHighlights.contractorWorkers)}
+            style={getHighlightedSectionStyle(sectionHighlights.contractorWorkers)}
+          >
+            <div className={getHighlightedSectionHeaderClassName(sectionHighlights.contractorWorkers)}>
               <h3 className="text-[#111318] text-base lg:text-lg font-bold leading-tight flex items-center gap-2">
                 <span className="material-symbols-outlined text-primary">group</span>
                 Información de Trabajadores Contratista
@@ -3480,10 +3589,14 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
           </div>
 
 
-          {formData.requiereAcreditarTrabajadoresMyma !== 'yes' && renderCondicionesLaboralesSection()}
+          {formData.requiereAcreditarTrabajadoresMyma !== 'yes' &&
+            renderCondicionesLaboralesSection(sectionHighlights.contractorWorkers)}
           {/* Section 12: Información de Vehículos Contratista */}
-          <div className="rounded-xl border border-[#e5e7eb] bg-white shadow-sm">
-            <div className="border-b border-[#e5e7eb] px-6 py-4 bg-gray-50/50">
+          <div
+            className={getHighlightedSectionCardClassName(sectionHighlights.contractorWorkers)}
+            style={getHighlightedSectionStyle(sectionHighlights.contractorWorkers)}
+          >
+            <div className={getHighlightedSectionHeaderClassName(sectionHighlights.contractorWorkers)}>
               <h3 className="text-[#111318] text-base lg:text-lg font-bold leading-tight flex items-center gap-2">
                 <span className="material-symbols-outlined text-primary">local_shipping</span>
                 Información de Vehículos Contratista
@@ -3539,8 +3652,11 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
           </div>
 
           {/* Section 13: Seguridad y Salud en el Trabajo (SST) */}
-          <div className="rounded-xl border border-[#e5e7eb] bg-white shadow-sm">
-            <div className="border-b border-[#e5e7eb] px-6 py-4 bg-gray-50/50">
+          <div
+            className={getHighlightedSectionCardClassName(sectionHighlights.contractorWorkers)}
+            style={getHighlightedSectionStyle(sectionHighlights.contractorWorkers)}
+          >
+            <div className={getHighlightedSectionHeaderClassName(sectionHighlights.contractorWorkers)}>
               <h3 className="text-[#111318] text-base lg:text-lg font-bold leading-tight flex items-center gap-2">
                 <span className="material-symbols-outlined text-primary">health_and_safety</span>
                 Seguridad y Salud en el Trabajo (SST)
