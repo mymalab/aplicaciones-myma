@@ -431,7 +431,7 @@ const EvaluacionServicios: React.FC = () => {
       },
     };
 
-    const denominador = 0.5475;
+    const denominador: number = 0.5475;
 
     let numerador = 0;
     let tieneAlMenosUnCriterio = false;

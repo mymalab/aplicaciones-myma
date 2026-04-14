@@ -356,6 +356,7 @@ const RequestForm: React.FC<RequestFormProps> = ({ onBack, onSave, onDelete, ini
       </div>
     </div>
   );
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -1013,88 +1014,6 @@ const CreateRequerimientoModal: React.FC<CreateRequerimientoModalProps> = ({ isO
     }));
   };
 
-  const renderDocumentUploader = (title: string, subtitle: string) => (
-    <div>
-      <h3 className="text-sm font-semibold text-[#111318] mb-3 flex items-center gap-2">
-        <span className="material-symbols-outlined text-primary text-[20px]">upload_file</span>
-        {title}
-      </h3>
-
-      <input
-        ref={fileInputRef}
-        type="file"
-        className="hidden"
-        onChange={handleFileInputChange}
-      />
-
-      <div
-        role="button"
-        tabIndex={0}
-        onClick={() => fileInputRef.current?.click()}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            fileInputRef.current?.click();
-          }
-        }}
-        onDragEnter={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          setIsDraggingFile(true);
-        }}
-        onDragOver={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          setIsDraggingFile(true);
-        }}
-        onDragLeave={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          setIsDraggingFile(false);
-        }}
-        onDrop={handleFileDrop}
-        className={`rounded-lg border-2 border-dashed p-5 transition-colors cursor-pointer ${
-          isDraggingFile
-            ? 'border-primary bg-primary/5'
-            : 'border-gray-300 bg-gray-50 hover:border-primary/60 hover:bg-primary/5'
-        }`}
-      >
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div className="flex items-start gap-3">
-            <span className="material-symbols-outlined text-primary text-[24px]">upload</span>
-            <div>
-              <p className="text-sm font-medium text-[#111318]">
-                Arrastra un archivo aqui o haz clic para seleccionarlo
-              </p>
-              <p className="text-xs text-[#616f89] mt-1">{subtitle}</p>
-            </div>
-          </div>
-          {selectedFile && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                clearSelectedFile();
-              }}
-              className="text-xs px-3 py-1.5 rounded-md border border-gray-300 text-[#616f89] hover:bg-gray-100 transition-colors"
-            >
-              Quitar archivo
-            </button>
-          )}
-        </div>
-
-        {selectedFile && (
-          <div className="mt-4 rounded-lg border border-gray-200 bg-white p-3 flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-sm font-medium text-[#111318] truncate">{selectedFile.name}</p>
-              <p className="text-xs text-[#616f89]">{formatFileSize(selectedFile.size)}</p>
-            </div>
-            <span className="material-symbols-outlined text-green-600 text-[20px]">check_circle</span>
-          </div>
-        )}
-      </div>
-    </div>
-  );
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);

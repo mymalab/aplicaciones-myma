@@ -512,7 +512,7 @@ const EvaluacionServicios2025: React.FC = () => {
       },
     };
 
-    const normalizador = 0.4493;
+    const normalizador: number = 0.4493;
 
     let numerador = 0;
     let tieneAlMenosUnCriterio = false;

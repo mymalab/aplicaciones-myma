@@ -15,7 +15,7 @@ const getDummyAdendaDetail = (codigoMyma: string): AdendaDetailData => {
     'MY-50-2025': {
       codigo_myma: 'MY-50-2025',
       nombre: 'Mina Las Cenizas',
-      tipo: 'adenda',
+      tipo: TipoAdenda.ADENDA,
       expediente: '2164006597',
       nombre_proyecto: 'Modificación Proyecto Mina Los Colorados: Ajustes y Continuidad Operacional',
       tipo_ingreso: 'Estudio de Impacto Ambiental',
@@ -33,7 +33,7 @@ const getDummyAdendaDetail = (codigoMyma: string): AdendaDetailData => {
     'MY-15-2025': {
       codigo_myma: 'MY-15-2025',
       nombre: 'CMP',
-      tipo: 'adenda',
+      tipo: TipoAdenda.ADENDA,
       expediente: '2164006598',
       nombre_proyecto: 'Proyecto de Ampliación Minera CMP',
       tipo_ingreso: 'Declaración de Impacto Ambiental',
@@ -50,7 +50,7 @@ const getDummyAdendaDetail = (codigoMyma: string): AdendaDetailData => {
     'MY-22-2025': {
       codigo_myma: 'MY-22-2025',
       nombre: 'Hidronor',
-      tipo: 'adenda',
+      tipo: TipoAdenda.ADENDA,
       expediente: '2164006599',
       nombre_proyecto: 'Proyecto Hidronor - Gestión Ambiental',
       tipo_ingreso: 'Estudio de Impacto Ambiental',
@@ -67,7 +67,7 @@ const getDummyAdendaDetail = (codigoMyma: string): AdendaDetailData => {
     'MY-16-2025': {
       codigo_myma: 'MY-16-2025',
       nombre: 'MyMA',
-      tipo: 'adenda_complementaria',
+      tipo: TipoAdenda.ADENDA_COMPLEMENTARIA,
       expediente: '2164006600',
       nombre_proyecto: 'Proyecto MyMA - Desarrollo Operacional',
       tipo_ingreso: 'Declaración de Impacto Ambiental',
@@ -84,7 +84,7 @@ const getDummyAdendaDetail = (codigoMyma: string): AdendaDetailData => {
     'MY-98-2025': {
       codigo_myma: 'MY-98-2025',
       nombre: 'Planta Las Cenizas',
-      tipo: 'adenda_complementaria',
+      tipo: TipoAdenda.ADENDA_COMPLEMENTARIA,
       expediente: '2164006601',
       nombre_proyecto: 'Planta Las Cenizas - Operaciones',
       tipo_ingreso: 'Estudio de Impacto Ambiental',
@@ -103,7 +103,7 @@ const getDummyAdendaDetail = (codigoMyma: string): AdendaDetailData => {
   return dummyData[codigoMyma] || {
     codigo_myma: codigoMyma,
     nombre: 'Proyecto',
-    tipo: 'adenda',
+    tipo: TipoAdenda.ADENDA,
     expediente: '-',
     nombre_proyecto: '-',
     tipo_ingreso: '-',

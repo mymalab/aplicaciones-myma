@@ -18,6 +18,12 @@ services:
         value: http://34.74.6.124:8080
       - key: ICSARA_API_PREFIX
         value: /v1
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: NOTEBOOK_LM_CHAT_API_BASE_URL
+        sync: false
+      - key: NOTEBOOK_LM_CHAT_API_BEARER_TOKEN
+        sync: false
       # Variables opcionales - si necesitas usar variables diferentes a las por defecto
       # - key: ICSARA_API_KEY
       #   value: your-icsara-api-key

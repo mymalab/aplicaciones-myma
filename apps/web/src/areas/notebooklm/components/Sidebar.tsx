@@ -4,12 +4,12 @@ import type { User } from '@supabase/supabase-js';
 import { supabase } from '@shared/api-client/supabase';
 import SidebarSettingsButton from '@shared/layout/SidebarSettingsButton';
 import SidebarSettingsModal from '@shared/layout/SidebarSettingsModal';
-import { notebookLMCreate } from '../utils/routes';
+import { notebookLMChat, notebookLMCreate } from '../utils/routes';
 
 interface SidebarProps {
   isOpen: boolean;
   onClose: () => void;
-  activeView?: 'list' | 'create';
+  activeView?: 'list' | 'create' | 'chat';
   hideOnDesktop?: boolean;
 }
 
@@ -27,8 +27,11 @@ const NotebookLMSidebar: React.FC<SidebarProps> = ({
   const [loading, setLoading] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  const isCreateActive =
-    activeView === 'create' || location.pathname.includes('/area/notebooklm');
+  const isChatRoute = location.pathname.includes('/area/notebooklm/chat');
+  const isCreateRoute =
+    location.pathname.includes('/area/notebooklm') && !isChatRoute;
+  const isCreateActive = activeView === 'create' || isCreateRoute;
+  const isChatActive = activeView === 'chat' || isChatRoute;
 
   useEffect(() => {
     const getUser = async () => {
@@ -73,6 +76,11 @@ const NotebookLMSidebar: React.FC<SidebarProps> = ({
 
   const handleCreateClick = () => {
     navigate(notebookLMCreate());
+    onClose();
+  };
+
+  const handleChatClick = () => {
+    navigate(notebookLMChat());
     onClose();
   };
 
@@ -149,6 +157,34 @@ const NotebookLMSidebar: React.FC<SidebarProps> = ({
                   }`}
                 >
                   Crear Notebook
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleChatClick}
+                className={`group flex items-center justify-center p-3 rounded-lg w-full aspect-square transition-colors relative ${
+                  isChatActive
+                    ? 'bg-primary text-white hover:bg-primary-hover'
+                    : 'text-[#616f89] hover:bg-gray-100'
+                }`}
+                title="Chat expertos"
+              >
+                <span
+                  className={`material-symbols-outlined text-2xl pointer-events-none ${
+                    isChatActive ? 'fill' : ''
+                  }`}
+                >
+                  forum
+                </span>
+                <span
+                  className={`absolute left-full ml-3 px-2 py-1 text-xs rounded whitespace-nowrap pointer-events-none transition-opacity duration-200 ${
+                    isChatActive
+                      ? 'bg-primary text-white opacity-0 group-hover:opacity-100'
+                      : 'bg-gray-900 text-white opacity-0 group-hover:opacity-100'
+                  }`}
+                >
+                  Chat expertos
                 </span>
               </button>
             </nav>

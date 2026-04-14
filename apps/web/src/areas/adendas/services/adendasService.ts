@@ -1,5 +1,6 @@
 import { supabase } from '@shared/api-client/supabase';
 import { Adenda, NewAdendaPayload, AdendaListItem } from '../types';
+import { TipoAdenda } from '../constants';
 
 type AdendaMutationPayload = {
   tipo: NewAdendaPayload['tipo'];
@@ -65,7 +66,7 @@ const mapAdenda = (data: any): Adenda => ({
 const DUMMY_ADENDAS: AdendaListItem[] = [
   {
     id: 1,
-    tipo: 'adenda',
+    tipo: TipoAdenda.ADENDA,
     codigo_myma: 'MY-50-2025',
     nombre: 'Mina Las Cenizas',
     estado: 'En curso',
@@ -73,7 +74,7 @@ const DUMMY_ADENDAS: AdendaListItem[] = [
   },
   {
     id: 2,
-    tipo: 'adenda',
+    tipo: TipoAdenda.ADENDA,
     codigo_myma: 'MY-15-2025',
     nombre: 'CMP',
     estado: 'En curso',
@@ -81,7 +82,7 @@ const DUMMY_ADENDAS: AdendaListItem[] = [
   },
   {
     id: 3,
-    tipo: 'adenda',
+    tipo: TipoAdenda.ADENDA,
     codigo_myma: 'MY-22-2025',
     nombre: 'Hidronor',
     estado: 'Stand By',
@@ -89,7 +90,7 @@ const DUMMY_ADENDAS: AdendaListItem[] = [
   },
   {
     id: 4,
-    tipo: 'adenda_complementaria',
+    tipo: TipoAdenda.ADENDA_COMPLEMENTARIA,
     codigo_myma: 'MY-16-2025',
     nombre: 'MyMA',
     estado: 'En curso',
@@ -97,7 +98,7 @@ const DUMMY_ADENDAS: AdendaListItem[] = [
   },
   {
     id: 5,
-    tipo: 'adenda_complementaria',
+    tipo: TipoAdenda.ADENDA_COMPLEMENTARIA,
     codigo_myma: 'MY-98-2025',
     nombre: 'Planta Las Cenizas',
     estado: 'Finalizado',

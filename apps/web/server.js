@@ -1,15 +1,18 @@
-﻿import express from 'express';
+import './server/loadEnv.js';
+import express from 'express';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { readFileSync } from 'fs';
 import http from 'http';
 import https from 'https';
+import { registerNotebookChatRoutes } from './server/notebookChat.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT =
+  process.env.PORT || (process.env.NODE_ENV === 'production' ? '3000' : '3001');
 const ACREDITACION_LEGACY_API_BASE_URL =
   process.env.ACREDITACION_LEGACY_API_BASE_URL || 'http://34.74.6.124';
 const ICSARA_API_BASE_URL =
@@ -29,6 +32,7 @@ app.use(express.json({ limit: '300mb' }));
 console.log(
   `[icsara] base=${ICSARA_API_BASE_URL} prefix=${ICSARA_API_PREFIX} apiKeyConfigured=${Boolean(ICSARA_API_KEY)}`,
 );
+console.log(`[server] mode=${process.env.NODE_ENV || 'development'} port=${PORT}`);
 
 const proxyLegacyAcreditacionPost = async (req, res, upstreamPath) => {
   const controller = new AbortController();
@@ -235,6 +239,8 @@ app.get('/api/acreditacion/adendas/jobs/:jobId/preguntas_clasificadas', async (r
     method: 'GET',
   });
 });
+
+registerNotebookChatRoutes(app);
 
 // Serve static files from the dist folder
 app.use(express.static(join(__dirname, 'dist')));
