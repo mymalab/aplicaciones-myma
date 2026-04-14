@@ -29,47 +29,6 @@ const canAccessTutorialVideo = (
   );
 };
 
-const renderVideoPlayer = (video: TutorialVideo) => {
-  if (video.provider === 'direct') {
-    return (
-      <video className="w-full h-full rounded-xl bg-black" controls preload="metadata">
-        <source src={video.url} />
-        Tu navegador no soporta la reproduccion de video.
-      </video>
-    );
-  }
-
-  if (video.embedUrl) {
-    return (
-      <iframe
-        src={video.embedUrl}
-        title={video.titulo}
-        className="w-full h-full rounded-xl bg-black"
-        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-        allowFullScreen
-      />
-    );
-  }
-
-  return (
-    <div className="h-full min-h-[240px] rounded-xl border border-dashed border-gray-300 bg-gray-50 flex items-center justify-center p-6 text-center">
-      <div>
-        <span className="material-symbols-outlined text-4xl text-gray-500 mb-3">open_in_new</span>
-        <p className="text-sm text-[#616f89] mb-4">Este video no permite insercion embebida.</p>
-        <a
-          href={video.url}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary-hover transition-colors"
-        >
-          <span className="material-symbols-outlined text-base">smart_display</span>
-          Abrir video
-        </a>
-      </div>
-    </div>
-  );
-};
-
 const OnboardingVideosView: React.FC = () => {
   const navigate = useNavigate();
   const { permissions, loading: permissionsLoading } = useHasPermissions();
@@ -163,6 +122,22 @@ const OnboardingVideosView: React.FC = () => {
   const selectedVideo = filteredVideos.find((video) => video.id === selectedVideoId) ?? null;
   const isBusy = loading || permissionsLoading;
 
+  const openVideoInNewTab = React.useCallback((video: TutorialVideo) => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    window.open(video.url, '_blank', 'noopener,noreferrer');
+  }, []);
+
+  const handleVideoSelect = React.useCallback(
+    (video: TutorialVideo) => {
+      setSelectedVideoId(video.id);
+      openVideoInNewTab(video);
+    },
+    [openVideoInNewTab]
+  );
+
   return (
     <div
       className="bg-gradient-to-br from-teal-50 via-blue-50 to-indigo-50 px-4 py-10 md:px-6 md:py-12"
@@ -193,7 +168,8 @@ const OnboardingVideosView: React.FC = () => {
             <h2 className="text-xl font-semibold text-[#111318]">Biblioteca de onboarding</h2>
             <p className="text-sm text-[#616f89] mt-1">
               Puedes filtrar por modulo. Se muestran contenidos con acceso permitido y
-              videos marcados sin requerimiento de permisos.
+              videos marcados sin requerimiento de permisos. Al seleccionar uno, se abrira en
+              una pestana nueva.
             </p>
           </div>
 
@@ -279,14 +255,39 @@ const OnboardingVideosView: React.FC = () => {
 
                 {filteredVideos.length > 0 && selectedVideo && (
                   <div className="grid grid-cols-1 xl:grid-cols-[1.7fr_1fr] gap-6">
-                    <section className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
-                      <div className="aspect-video">{renderVideoPlayer(selectedVideo)}</div>
-                      <div className="mt-4">
-                        <h3 className="text-lg font-semibold text-[#111318]">{selectedVideo.titulo}</h3>
-                        <p className="text-xs font-medium text-teal-700 mt-1">{selectedVideo.modulo}</p>
-                        {selectedVideo.descripcion && (
-                          <p className="text-sm text-[#616f89] mt-2">{selectedVideo.descripcion}</p>
-                        )}
+                    <section className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+                      <div className="rounded-2xl border border-teal-100 bg-gradient-to-br from-teal-50 via-white to-blue-50 p-5">
+                        <div className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 text-xs font-semibold text-teal-700 shadow-sm">
+                          <span className="material-symbols-outlined text-sm">open_in_new</span>
+                          Apertura externa
+                        </div>
+                        <h3 className="mt-4 text-xl font-semibold text-[#111318]">
+                          {selectedVideo.titulo}
+                        </h3>
+                        <p className="text-xs font-medium uppercase tracking-[0.18em] text-teal-700 mt-2">
+                          {selectedVideo.modulo}
+                        </p>
+                        <p className="mt-4 text-sm leading-6 text-[#516079]">
+                          {selectedVideo.descripcion ||
+                            'Este contenido ya no se reproduce dentro de MyMA. Usa la lista para abrirlo directamente en una nueva pestana.'}
+                        </p>
+
+                        <div className="mt-6 flex flex-wrap items-center gap-3">
+                          <button
+                            type="button"
+                            onClick={() => openVideoInNewTab(selectedVideo)}
+                            className="inline-flex items-center gap-2 rounded-xl bg-teal-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-teal-700"
+                          >
+                            <span className="material-symbols-outlined text-base">smart_display</span>
+                            Abrir video
+                          </button>
+                          <div className="inline-flex items-center gap-2 rounded-xl border border-white/80 bg-white/80 px-3 py-2 text-xs font-medium text-[#516079]">
+                            <span className="material-symbols-outlined text-sm text-teal-600">
+                              tips_and_updates
+                            </span>
+                            La seleccion abre YouTube en otra pestana.
+                          </div>
+                        </div>
                       </div>
                     </section>
 
@@ -299,7 +300,8 @@ const OnboardingVideosView: React.FC = () => {
                           return (
                             <button
                               key={video.id}
-                              onClick={() => setSelectedVideoId(video.id)}
+                              type="button"
+                              onClick={() => handleVideoSelect(video)}
                               className={`w-full text-left p-3 rounded-xl border transition-colors ${
                                 isActive
                                   ? 'border-primary bg-primary/5'
@@ -319,7 +321,7 @@ const OnboardingVideosView: React.FC = () => {
                                   <p className="text-xs text-[#616f89] mt-1">{video.modulo}</p>
                                 </div>
                                 <span className="material-symbols-outlined text-gray-500 text-base">
-                                  {isActive ? 'pause_circle' : 'play_circle'}
+                                  open_in_new
                                 </span>
                               </div>
                             </button>
