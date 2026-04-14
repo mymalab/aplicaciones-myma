@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { WorkerList } from './WorkerList';
 import {
   Worker,
@@ -193,6 +193,12 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
   const [solicitudPrueba, setSolicitudPrueba] = useState(false);
   const [omitirCamposObligatorios, setOmitirCamposObligatorios] = useState(false);
   const [canUseDebugControls, setCanUseDebugControls] = useState(false);
+  const contractorAccreditationAnchorRef = useRef<HTMLDivElement | null>(null);
+  const contractorWorkersAccreditationAnchorRef = useRef<HTMLDivElement | null>(null);
+  const pendingContractorScrollAnchorRef = useRef<{
+    section: 'contractor' | 'contractorWorkers';
+    top: number;
+  } | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -811,8 +817,53 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
     };
   }, [showDropdownContactoCliente]);
 
+  useLayoutEffect(() => {
+    if (pendingContractorScrollAnchorRef.current === null) {
+      return;
+    }
+
+    const pendingAnchor = pendingContractorScrollAnchorRef.current;
+    const anchorElement =
+      pendingAnchor.section === 'contractor'
+        ? contractorAccreditationAnchorRef.current
+        : contractorWorkersAccreditationAnchorRef.current;
+
+    pendingContractorScrollAnchorRef.current = null;
+
+    if (!anchorElement) {
+      return;
+    }
+
+    const scrollDelta = anchorElement.getBoundingClientRect().top - pendingAnchor.top;
+
+    if (Math.abs(scrollDelta) > 1) {
+      window.scrollBy({
+        top: scrollDelta,
+        left: 0,
+        behavior: 'auto',
+      });
+    }
+  }, [
+    formData.requiereAcreditarContratista,
+    formData.requiereAcreditarTrabajadoresContratista,
+  ]);
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
+
+    if (name === 'requiereAcreditarContratista' || name === 'requiereAcreditarTrabajadoresContratista') {
+      const anchorElement =
+        name === 'requiereAcreditarContratista'
+          ? contractorAccreditationAnchorRef.current
+          : contractorWorkersAccreditationAnchorRef.current;
+
+      if (anchorElement) {
+        pendingContractorScrollAnchorRef.current = {
+          section: name === 'requiereAcreditarContratista' ? 'contractor' : 'contractorWorkers',
+          top: anchorElement.getBoundingClientRect().top,
+        };
+      }
+    }
 
     if (name === 'projectCode') {
       setFormData(prev => ({
@@ -3166,7 +3217,10 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
               </h3>
             </div>
             <div className="p-6">
-              <div className="flex flex-col gap-2 p-4 bg-gray-50 rounded-lg border border-gray-100">
+              <div
+                ref={contractorAccreditationAnchorRef}
+                className="flex flex-col gap-2 p-4 bg-gray-50 rounded-lg border border-gray-100"
+              >
                 <span className="text-[#111318] text-sm font-medium flex items-center gap-2">
                   <span className="material-symbols-outlined text-blue-500 text-base">check_circle</span>
                   ¿Se requiere acreditar a contratista? <span className="text-red-500">*</span>
@@ -3332,7 +3386,10 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
               </h3>
             </div>
             <div className="p-6">
-              <div className="flex flex-col gap-2 p-4 bg-gray-50 rounded-lg border border-gray-100">
+              <div
+                ref={contractorWorkersAccreditationAnchorRef}
+                className="flex flex-col gap-2 p-4 bg-gray-50 rounded-lg border border-gray-100"
+              >
                 <span className="text-[#111318] text-sm font-medium flex items-center gap-2">
                   <span className="material-symbols-outlined text-blue-500 text-base">check_circle</span>
                   ¿Se requiere acreditar a trabajadores de contratista? <span className="text-red-500">*</span>
