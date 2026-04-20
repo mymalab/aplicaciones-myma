@@ -12,19 +12,41 @@ type AdendaMutationPayload = {
   url_proyecto?: string;
 };
 
+type AdendaMutationOptions = {
+  requireRecord?: boolean;
+};
+
+type SupabaseErrorLike = {
+  code?: string;
+  message?: string;
+  details?: string;
+  hint?: string;
+};
+
 let supportsUrlProyectoColumn: boolean | null = null;
 
-const isMissingUrlProyectoColumnError = (error: unknown): boolean => {
+const normalizeErrorText = (value: unknown): string =>
+  typeof value === 'string' ? value.toLowerCase() : '';
+
+const isMissingColumnError = (error: unknown, columnName: string): boolean => {
   if (!error || typeof error !== 'object') {
     return false;
   }
 
-  const supabaseError = error as { code?: string; message?: string };
-  return (
-    supabaseError.code === 'PGRST204' &&
-    typeof supabaseError.message === 'string' &&
-    supabaseError.message.includes("'url_proyecto'")
-  );
+  const supabaseError = error as SupabaseErrorLike;
+  const code = String(supabaseError.code ?? '');
+  const fullText = [
+    normalizeErrorText(supabaseError.message),
+    normalizeErrorText(supabaseError.details),
+    normalizeErrorText(supabaseError.hint),
+  ].join(' ');
+  const normalizedColumnName = columnName.toLowerCase();
+
+  if (code === 'PGRST204' || code === '42703') {
+    return fullText.includes(normalizedColumnName);
+  }
+
+  return fullText.includes('column') && fullText.includes(normalizedColumnName);
 };
 
 const buildMutationPayload = (
@@ -60,9 +82,60 @@ const mapAdenda = (data: any): Adenda => ({
   estado: data.estado,
 });
 
-/**
- * Datos dummy para desarrollo
- */
+const mapAdendaListItem = (item: any): AdendaListItem => ({
+  id: item.id,
+  tipo: item.tipo,
+  codigo_myma: item.codigo_myma,
+  nombre: item.nombre,
+  url_proyecto: item.url_proyecto,
+  estado: item.estado,
+  fecha_entrega: item.fecha_entrega,
+  fecha_creacion: item.fecha_creacion || item.created_at,
+});
+
+const buildOptimisticAdenda = (id: number, payload: NewAdendaPayload): Adenda => ({
+  id,
+  tipo: payload.tipo,
+  codigo_myma: payload.codigo_myma,
+  nombre: payload.nombre,
+  url_proyecto: payload.url_proyecto,
+  descripcion: payload.descripcion,
+  fecha_entrega: payload.fecha_entrega,
+  estado: payload.estado,
+});
+
+const fetchAdendasWithOrder = async (orderColumn: 'fecha_creacion' | 'created_at') =>
+  supabase
+    .from('adendas')
+    .select('*')
+    .order(orderColumn, { ascending: false });
+
+const insertAdendaRow = async (
+  payload: NewAdendaPayload,
+  includeUrlProyecto: boolean,
+  requireRecord: boolean
+) => {
+  const query = supabase
+    .from('adendas')
+    .insert([buildMutationPayload(payload, includeUrlProyecto)]);
+
+  return requireRecord ? query.select().single() : query;
+};
+
+const updateAdendaRow = async (
+  id: number,
+  payload: NewAdendaPayload,
+  includeUrlProyecto: boolean,
+  requireRecord: boolean
+) => {
+  const query = supabase
+    .from('adendas')
+    .update(buildMutationPayload(payload, includeUrlProyecto))
+    .eq('id', id);
+
+  return requireRecord ? query.select().single() : query;
+};
+
 const DUMMY_ADENDAS: AdendaListItem[] = [
   {
     id: 1,
@@ -106,51 +179,36 @@ const DUMMY_ADENDAS: AdendaListItem[] = [
   },
 ];
 
-/**
- * Obtener todas las adendas
- */
 export const fetchAdendas = async (): Promise<AdendaListItem[]> => {
   try {
-    const { data, error } = await supabase
-      .from('adendas')
-      .select('*')
-      .order('fecha_creacion', { ascending: false });
+    let { data, error } = await fetchAdendasWithOrder('fecha_creacion');
+
+    if (error && isMissingColumnError(error, 'fecha_creacion')) {
+      console.warn(
+        "La columna 'fecha_creacion' no existe en Supabase. Reintentando listado de adendas con 'created_at'."
+      );
+      ({ data, error } = await fetchAdendasWithOrder('created_at'));
+    }
 
     if (error) {
       console.error('Error fetching adendas:', error);
-      // Retornar datos dummy en caso de error o tabla vacía
-      console.log('📦 Usando datos dummy para desarrollo');
+      console.log('Usando datos dummy para desarrollo');
       return DUMMY_ADENDAS;
     }
 
-    // Si hay datos en la BD, usarlos; si no, usar dummy
     if (data && data.length > 0) {
-      return data.map((item: any) => ({
-        id: item.id,
-        tipo: item.tipo,
-        codigo_myma: item.codigo_myma,
-        nombre: item.nombre,
-        url_proyecto: item.url_proyecto,
-        estado: item.estado,
-        fecha_entrega: item.fecha_entrega,
-        fecha_creacion: item.fecha_creacion || item.created_at,
-      }));
-    } else {
-      // Tabla vacía, retornar datos dummy
-      console.log('📦 Tabla vacía, usando datos dummy para desarrollo');
-      return DUMMY_ADENDAS;
+      return data.map(mapAdendaListItem);
     }
+
+    console.log('Tabla vacia, usando datos dummy para desarrollo');
+    return DUMMY_ADENDAS;
   } catch (error) {
     console.error('Error in fetchAdendas:', error);
-    // En caso de error, retornar datos dummy
-    console.log('📦 Error al cargar, usando datos dummy para desarrollo');
+    console.log('Error al cargar, usando datos dummy para desarrollo');
     return DUMMY_ADENDAS;
   }
 };
 
-/**
- * Obtener una adenda por código MYMA
- */
 export const fetchAdendaByCodigoMyma = async (codigoMyma: string): Promise<Adenda | null> => {
   const codigo = codigoMyma.trim();
   if (!codigo) {
@@ -192,9 +250,6 @@ export const fetchAdendaByCodigoMyma = async (codigoMyma: string): Promise<Adend
   }
 };
 
-/**
- * Obtener una adenda por ID
- */
 export const fetchAdendaById = async (id: number): Promise<Adenda | null> => {
   try {
     const { data, error } = await supabase
@@ -208,7 +263,9 @@ export const fetchAdendaById = async (id: number): Promise<Adenda | null> => {
       throw error;
     }
 
-    if (!data) return null;
+    if (!data) {
+      return null;
+    }
 
     return mapAdenda(data);
   } catch (error) {
@@ -217,30 +274,22 @@ export const fetchAdendaById = async (id: number): Promise<Adenda | null> => {
   }
 };
 
-/**
- * Crear una nueva adenda
- */
-export const createAdenda = async (payload: NewAdendaPayload): Promise<Adenda> => {
+export const createAdenda = async (
+  payload: NewAdendaPayload,
+  options: AdendaMutationOptions = {}
+): Promise<Adenda> => {
   try {
     const shouldTryWithUrlProyecto = supportsUrlProyectoColumn !== false;
+    const requireRecord = options.requireRecord ?? false;
 
-    let { data, error } = await supabase
-      .from('adendas')
-      .insert([buildMutationPayload(payload, shouldTryWithUrlProyecto)])
-      .select()
-      .single();
+    let { data, error } = await insertAdendaRow(payload, shouldTryWithUrlProyecto, requireRecord);
 
-    if (error && shouldTryWithUrlProyecto && isMissingUrlProyectoColumnError(error)) {
+    if (error && shouldTryWithUrlProyecto && isMissingColumnError(error, 'url_proyecto')) {
       supportsUrlProyectoColumn = false;
       console.warn(
         "La columna 'url_proyecto' no existe en Supabase. Reintentando guardado de adenda sin esa columna."
       );
-
-      ({ data, error } = await supabase
-        .from('adendas')
-        .insert([buildMutationPayload(payload, false)])
-        .select()
-        .single());
+      ({ data, error } = await insertAdendaRow(payload, false, requireRecord));
     } else if (!error && shouldTryWithUrlProyecto) {
       supportsUrlProyectoColumn = true;
     }
@@ -250,6 +299,16 @@ export const createAdenda = async (payload: NewAdendaPayload): Promise<Adenda> =
       throw error;
     }
 
+    if (!data) {
+      if (requireRecord) {
+        throw new Error(
+          'La adenda se guardo, pero no fue posible recuperar el registro creado para continuar.'
+        );
+      }
+
+      return buildOptimisticAdenda(0, payload);
+    }
+
     return mapAdenda(data);
   } catch (error) {
     console.error('Error in createAdenda:', error);
@@ -257,35 +316,28 @@ export const createAdenda = async (payload: NewAdendaPayload): Promise<Adenda> =
   }
 };
 
-/**
- * Actualizar una adenda existente
- */
 export const updateAdenda = async (
   id: number,
-  payload: NewAdendaPayload
+  payload: NewAdendaPayload,
+  options: AdendaMutationOptions = {}
 ): Promise<Adenda> => {
   try {
     const shouldTryWithUrlProyecto = supportsUrlProyectoColumn !== false;
+    const requireRecord = options.requireRecord ?? false;
 
-    let { data, error } = await supabase
-      .from('adendas')
-      .update(buildMutationPayload(payload, shouldTryWithUrlProyecto))
-      .eq('id', id)
-      .select()
-      .single();
+    let { data, error } = await updateAdendaRow(
+      id,
+      payload,
+      shouldTryWithUrlProyecto,
+      requireRecord
+    );
 
-    if (error && shouldTryWithUrlProyecto && isMissingUrlProyectoColumnError(error)) {
+    if (error && shouldTryWithUrlProyecto && isMissingColumnError(error, 'url_proyecto')) {
       supportsUrlProyectoColumn = false;
       console.warn(
-        "La columna 'url_proyecto' no existe en Supabase. Reintentando actualización de adenda sin esa columna."
+        "La columna 'url_proyecto' no existe en Supabase. Reintentando actualizacion de adenda sin esa columna."
       );
-
-      ({ data, error } = await supabase
-        .from('adendas')
-        .update(buildMutationPayload(payload, false))
-        .eq('id', id)
-        .select()
-        .single());
+      ({ data, error } = await updateAdendaRow(id, payload, false, requireRecord));
     } else if (!error && shouldTryWithUrlProyecto) {
       supportsUrlProyectoColumn = true;
     }
@@ -295,6 +347,16 @@ export const updateAdenda = async (
       throw error;
     }
 
+    if (!data) {
+      if (requireRecord) {
+        throw new Error(
+          'La adenda se actualizo, pero no fue posible recuperar el registro actualizado para continuar.'
+        );
+      }
+
+      return buildOptimisticAdenda(id, payload);
+    }
+
     return mapAdenda(data);
   } catch (error) {
     console.error('Error in updateAdenda:', error);
@@ -302,9 +364,6 @@ export const updateAdenda = async (
   }
 };
 
-/**
- * Eliminar una adenda
- */
 export const deleteAdenda = async (id: number): Promise<void> => {
   try {
     const { error } = await supabase.from('adendas').delete().eq('id', id);

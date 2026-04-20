@@ -64,6 +64,74 @@ const buildAdendasUrl = (baseUrl: string, path: string) => `${baseUrl}${path}`;
 const getResponseContentType = (response: Response) =>
   response.headers.get('content-type')?.toLowerCase() ?? '';
 
+type SupabaseLikeError = {
+  code?: string;
+  message?: string;
+  details?: string;
+  hint?: string;
+};
+
+const normalizeOptionalProjectUrl = (value: string): string | undefined => {
+  let trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  if (trimmed.startsWith('//')) {
+    trimmed = `https:${trimmed}`;
+  } else if (trimmed.startsWith('www.')) {
+    trimmed = `https://${trimmed}`;
+  } else if (!/^[a-z][a-z\d+.-]*:\/\//i.test(trimmed) && /\.[a-z]{2,}/i.test(trimmed) && !/\s/.test(trimmed)) {
+    trimmed = `https://${trimmed}`;
+  }
+
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(trimmed);
+  } catch {
+    throw new Error('La URL del proyecto no es valida. Usa un formato como https://mi-proyecto.cl');
+  }
+
+  if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+    throw new Error('La URL del proyecto debe comenzar con http:// o https://');
+  }
+
+  return parsedUrl.toString();
+};
+
+const getAdendaErrorMessage = (error: unknown): string => {
+  if (error && typeof error === 'object') {
+    const supabaseError = error as SupabaseLikeError;
+    const code = String(supabaseError.code ?? '');
+    const details = [supabaseError.message, supabaseError.details, supabaseError.hint]
+      .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+      .join(' ')
+      .toLowerCase();
+
+    if (code === '42501' || details.includes('permission denied')) {
+      return 'No tienes permisos para guardar adendas en Supabase.';
+    }
+
+    if (details.includes('row-level security')) {
+      return 'Supabase bloqueo el guardado por reglas de seguridad. Revisa las policies de la tabla adendas.';
+    }
+
+    if (details.includes('duplicate key') || details.includes('unique constraint')) {
+      return 'Ya existe una adenda con esos datos.';
+    }
+
+    if (details.includes('url_proyecto') && details.includes('column')) {
+      return "La base de datos no reconoce todavia la columna 'url_proyecto'.";
+    }
+  }
+
+  if (error instanceof Error && error.message.trim()) {
+    return error.message.trim();
+  }
+
+  return 'Error al guardar la adenda. Por favor, intente nuevamente.';
+};
+
 /**
  * Verifica si el servidor de la API está disponible usando el endpoint de health check
  * Retorna un objeto con el estado y un mensaje de error si falla
@@ -358,16 +426,24 @@ const AdendaForm: React.FC<AdendaFormProps> = ({ onBack, onSave }) => {
     }
   };
 
-  const guardarAdenda = async (redirect = true): Promise<Adenda> => {
+  const guardarAdenda = async (
+    redirect = true,
+    options: { requireRecord?: boolean } = {}
+  ): Promise<Adenda> => {
     try {
       setSaving(true);
       setError(null);
+
+      const normalizedUrlProyecto = normalizeOptionalProjectUrl(urlProyecto);
+      if (normalizedUrlProyecto && normalizedUrlProyecto !== urlProyecto.trim()) {
+        setUrlProyecto(normalizedUrlProyecto);
+      }
 
       const payload: NewAdendaPayload = {
         tipo,
         codigo_myma: codigoMyma || undefined,
         nombre: nombre || undefined,
-        url_proyecto: urlProyecto.trim() || undefined,
+        url_proyecto: normalizedUrlProyecto,
         descripcion: descripcion || undefined,
         fecha_entrega: fechaEntrega || undefined,
         estado: estado || undefined,
@@ -375,9 +451,9 @@ const AdendaForm: React.FC<AdendaFormProps> = ({ onBack, onSave }) => {
 
       let adendaGuardada: Adenda;
       if (isEditing && id) {
-        adendaGuardada = await updateAdenda(parseInt(id), payload);
+        adendaGuardada = await updateAdenda(parseInt(id), payload, options);
       } else {
-        adendaGuardada = await createAdenda(payload);
+        adendaGuardada = await createAdenda(payload, options);
       }
 
       if (redirect) {
@@ -387,7 +463,7 @@ const AdendaForm: React.FC<AdendaFormProps> = ({ onBack, onSave }) => {
       return adendaGuardada;
     } catch (error) {
       console.error('Error saving adenda:', error);
-      setError('Error al guardar la adenda. Por favor, intente nuevamente.');
+      setError(getAdendaErrorMessage(error));
       throw error;
     } finally {
       setSaving(false);
@@ -440,7 +516,7 @@ const AdendaForm: React.FC<AdendaFormProps> = ({ onBack, onSave }) => {
             console.log('Conexión verificada exitosamente.');
           }
           
-          const adendaGuardada = await guardarAdenda(false);
+          const adendaGuardada = await guardarAdenda(false, { requireRecord: true });
           console.log('Subiendo PDF a la API...');
           const jobResponse = await subirPdfAApi(archivo, adendaGuardada.id, apiConfig);
           console.log('PDF subido exitosamente, respuesta:', jobResponse);
@@ -473,8 +549,7 @@ const AdendaForm: React.FC<AdendaFormProps> = ({ onBack, onSave }) => {
           return; // Salir temprano para no guardar/navegar todavía
         } catch (error) {
           console.error('Error al procesar PDF:', error);
-          const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
-          setError(errorMessage);
+          setError(getAdendaErrorMessage(error));
           setSaving(false);
           setProcesandoPdf(false);
           return;
@@ -485,10 +560,10 @@ const AdendaForm: React.FC<AdendaFormProps> = ({ onBack, onSave }) => {
 
       // Si llegamos aquí y no hay popup abierto, guardar la adenda normalmente
       // (esto solo ocurre si no hay archivo PDF)
-      await guardarAdenda();
+      await guardarAdenda(true, { requireRecord: false });
     } catch (error) {
       console.error('Error en procesarGuardado:', error);
-      setError('Error al procesar la solicitud. Por favor, intente nuevamente.');
+      setError(getAdendaErrorMessage(error));
       setSaving(false);
       setProcesandoPdf(false);
     } finally {
@@ -513,6 +588,21 @@ const AdendaForm: React.FC<AdendaFormProps> = ({ onBack, onSave }) => {
       onBack();
     } else {
       navigate(adendasList());
+    }
+  };
+
+  const handleUrlProyectoBlur = () => {
+    if (!urlProyecto.trim()) {
+      return;
+    }
+
+    try {
+      const normalizedUrl = normalizeOptionalProjectUrl(urlProyecto);
+      if (normalizedUrl && normalizedUrl !== urlProyecto.trim()) {
+        setUrlProyecto(normalizedUrl);
+      }
+    } catch {
+      // Dejamos que la validacion ocurra al guardar para no interrumpir la escritura.
     }
   };
 
@@ -584,7 +674,7 @@ const AdendaForm: React.FC<AdendaFormProps> = ({ onBack, onSave }) => {
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="bg-white rounded-lg border border-gray-200 p-6">
+        <form onSubmit={handleSubmit} noValidate className="bg-white rounded-lg border border-gray-200 p-6">
           {error && (
             <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
               {error}
@@ -644,12 +734,19 @@ const AdendaForm: React.FC<AdendaFormProps> = ({ onBack, onSave }) => {
                 URL del proyecto
               </label>
               <input
-                type="url"
+                type="text"
+                inputMode="url"
+                autoCapitalize="none"
+                autoCorrect="off"
                 value={urlProyecto}
                 onChange={(e) => setUrlProyecto(e.target.value)}
+                onBlur={handleUrlProyectoBlur}
                 className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
                 placeholder="https://..."
               />
+              <p className="mt-2 text-xs text-gray-500">
+                Puedes pegar la URL completa o solo el dominio; la normalizamos al guardar.
+              </p>
             </div>
 
             {/* Descripción */}
