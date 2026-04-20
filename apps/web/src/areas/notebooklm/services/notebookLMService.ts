@@ -186,8 +186,8 @@ const NOTEBOOK_LM_CHAT_API_BASE_URL = (
   .trim()
   .replace(/\/+$/, '');
 
-const NOTEBOOK_LM_SHARE_API_BASE_URL = (
-  import.meta.env.VITE_NOTEBOOK_LM_SHARE_API_BASE_URL || NOTEBOOK_LM_CHAT_API_BASE_URL
+const NOTEBOOK_LM_PROXY_CHAT_BASE_URL = (
+  import.meta.env.VITE_NOTEBOOK_LM_PROXY_CHAT_BASE_URL || '/api/notebooklm/chat'
 )
   .trim()
   .replace(/\/+$/, '');
@@ -203,12 +203,6 @@ const NOTEBOOK_LM_CHAT_API_BEARER_TOKEN = (
   ''
 ).trim();
 
-const NOTEBOOK_LM_SHARE_API_BEARER_TOKEN = (
-  import.meta.env.VITE_NOTEBOOK_LM_SHARE_API_BEARER_TOKEN ||
-  import.meta.env.VITE_NOTEBOOK_LM_LOCAL_API_BEARER_TOKEN ||
-  ''
-).trim();
-
 const NOTEBOOK_LM_AUTH_HEADER_NAME = 'X-NotebookLM-Auth';
 
 export const NOTEBOOK_LM_CHAT_API_DOCS_URL = `${NOTEBOOK_LM_CHAT_API_BASE_URL}/docs`;
@@ -216,8 +210,14 @@ export const NOTEBOOK_LM_CHAT_API_DOCS_URL = `${NOTEBOOK_LM_CHAT_API_BASE_URL}/d
 const buildNotebookLmLocalApiUrl = (path: string) =>
   `${NOTEBOOK_LM_LOCAL_API_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`;
 
+const buildNotebookLmChatProxyUrl = (path: string) =>
+  `${NOTEBOOK_LM_PROXY_CHAT_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`;
+
 const getNotebookLmLocalApiBearerToken = () =>
   /^https?:\/\//i.test(NOTEBOOK_LM_LOCAL_API_BASE_URL) ? NOTEBOOK_LM_LOCAL_API_BEARER_TOKEN : '';
+
+const getNotebookLmChatProxyBearerToken = () =>
+  /^https?:\/\//i.test(NOTEBOOK_LM_PROXY_CHAT_BASE_URL) ? NOTEBOOK_LM_CHAT_API_BEARER_TOKEN : '';
 
 const normalizeString = (value: unknown): string =>
   typeof value === 'string' ? value.trim() : '';
@@ -595,7 +595,7 @@ export const validateNotebookLmCookies = async (
     throw new Error('Pega cookies antes de validarlas.');
   }
 
-  const endpoint = `${NOTEBOOK_LM_CHAT_API_BASE_URL}/auth/validate-cookies`;
+  const endpoint = buildNotebookLmChatProxyUrl('/validate-cookies');
 
   let response: Response;
   try {
@@ -606,7 +606,7 @@ export const validateNotebookLmCookies = async (
           'Content-Type': 'application/json',
         },
         {
-          bearerToken: NOTEBOOK_LM_CHAT_API_BEARER_TOKEN,
+          bearerToken: getNotebookLmChatProxyBearerToken(),
         }
       ),
       body: JSON.stringify({
@@ -697,7 +697,7 @@ export const validateNotebookLmCookies = async (
 export const fetchNotebookLmAccountNotebooks = async (
   authPayload: NotebookLmAuthPayload
 ): Promise<NotebookOption[]> => {
-  const endpoint = `${NOTEBOOK_LM_CHAT_API_BASE_URL}/notebooks`;
+  const endpoint = buildNotebookLmChatProxyUrl('/notebooks');
 
   let response: Response;
   try {
@@ -708,7 +708,7 @@ export const fetchNotebookLmAccountNotebooks = async (
           Accept: 'application/json',
         },
         {
-          bearerToken: NOTEBOOK_LM_CHAT_API_BEARER_TOKEN,
+          bearerToken: getNotebookLmChatProxyBearerToken(),
           authPayload,
         }
       ),
@@ -1265,9 +1265,10 @@ export const shareNotebookWithUser = async (
     throw new Error('No se recibio un correo valido para compartir el notebook.');
   }
 
-  const endpoint = `${NOTEBOOK_LM_SHARE_API_BASE_URL}/notebooks/${encodeURIComponent(
-    normalizedNotebookId
-  )}/share/users`;
+  const endpoint = buildNotebookLmLocalApiUrl(
+    `/notebooks/${encodeURIComponent(normalizedNotebookId)}/share/users`
+  );
+  const localApiBearerToken = getNotebookLmLocalApiBearerToken();
 
   let response: Response;
   try {
@@ -1278,7 +1279,7 @@ export const shareNotebookWithUser = async (
           'Content-Type': 'application/json',
         },
         {
-          bearerToken: NOTEBOOK_LM_SHARE_API_BEARER_TOKEN,
+          bearerToken: localApiBearerToken,
           authPayload,
         }
       ),
