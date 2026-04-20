@@ -7,7 +7,8 @@ import { fetchAdendaById, createAdenda, updateAdenda } from '../services/adendas
 import { adendasList } from '../utils/routes';
 
 const ADENDAS_PROXY_BASE = '/api/acreditacion/adendas';
-const ADENDAS_LOCAL_BASE = (
+const ADENDAS_LOCAL_PROXY_BASE = '/api/acreditacion/adendas-local';
+const ADENDAS_LOCAL_DIRECT_BASE = (
   import.meta.env.VITE_ADENDAS_LOCAL_API_BASE_URL || 'http://localhost:8000/v1'
 )
   .trim()
@@ -17,6 +18,27 @@ const ADENDAS_LOCAL_API_KEY = (
   import.meta.env.VITE_ICSARA_API_KEY ||
   ''
 ).trim();
+
+const shouldUseLocalApiProxy = (() => {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  try {
+    const targetUrl = new URL(ADENDAS_LOCAL_DIRECT_BASE);
+    return (
+      ['localhost', '127.0.0.1'].includes(targetUrl.hostname) &&
+      targetUrl.origin !== window.location.origin
+    );
+  } catch (error) {
+    console.warn('No se pudo analizar VITE_ADENDAS_LOCAL_API_BASE_URL, usando acceso directo.', error);
+    return false;
+  }
+})();
+
+const ADENDAS_LOCAL_BASE = shouldUseLocalApiProxy
+  ? ADENDAS_LOCAL_PROXY_BASE
+  : ADENDAS_LOCAL_DIRECT_BASE;
 
 interface AdendasApiConfig {
   baseUrl: string;
@@ -32,7 +54,10 @@ const ADENDAS_REMOTE_CONFIG: AdendasApiConfig = {
 const ADENDAS_LOCAL_CONFIG: AdendasApiConfig = {
   baseUrl: ADENDAS_LOCAL_BASE,
   strictHealthCheck: true,
-  headers: ADENDAS_LOCAL_API_KEY ? { 'X-API-Key': ADENDAS_LOCAL_API_KEY } : undefined,
+  headers:
+    !shouldUseLocalApiProxy && ADENDAS_LOCAL_API_KEY
+      ? { 'X-API-Key': ADENDAS_LOCAL_API_KEY }
+      : undefined,
 };
 
 const buildAdendasUrl = (baseUrl: string, path: string) => `${baseUrl}${path}`;

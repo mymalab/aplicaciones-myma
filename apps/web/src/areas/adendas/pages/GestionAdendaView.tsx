@@ -13,7 +13,7 @@ import type {
 } from '../types';
 import { adendasList, adendasPregunta } from '../utils/routes';
 
-type SortField = 'numero' | 'estado' | 'complejidad';
+type SortField = 'orden' | 'estado' | 'complejidad';
 type SortDirection = 'asc' | 'desc';
 
 interface FiltrosPregunta {
@@ -24,7 +24,12 @@ interface FiltrosPregunta {
   temaPrincipal: 'Todos' | string;
 }
 
-const SORT_SEQUENCE: SortField[] = ['numero', 'estado', 'complejidad'];
+const SORT_SEQUENCE: SortField[] = ['orden', 'estado', 'complejidad'];
+const SORT_LABELS: Record<SortField, string> = {
+  orden: 'orden',
+  estado: 'estado',
+  complejidad: 'complejidad',
+};
 
 const COMPLEJIDAD_RANK: Record<ComplejidadPregunta, number> = {
   Baja: 1,
@@ -141,7 +146,7 @@ const GestionAdendaView: React.FC = () => {
     encargado: 'Todos',
     temaPrincipal: 'Todos',
   });
-  const [sortField, setSortField] = useState<SortField>('numero');
+  const [sortField, setSortField] = useState<SortField>('orden');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const [showFilters, setShowFilters] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -235,6 +240,7 @@ const GestionAdendaView: React.FC = () => {
 
       const matchSearch =
         !searchLower ||
+        String(pregunta.orden ?? '').toLowerCase().includes(searchLower) ||
         pregunta.numero_formateado.toLowerCase().includes(searchLower) ||
         pregunta.texto.toLowerCase().includes(searchLower) ||
         pregunta.capitulo.toLowerCase().includes(searchLower) ||
@@ -276,8 +282,8 @@ const GestionAdendaView: React.FC = () => {
     items.sort((a, b) => {
       let comparison = 0;
 
-      if (sortField === 'numero') {
-        comparison = (a.numero || 0) - (b.numero || 0);
+      if (sortField === 'orden') {
+        comparison = (a.orden ?? a.numero ?? 0) - (b.orden ?? b.numero ?? 0);
       }
 
       if (sortField === 'estado') {
@@ -624,7 +630,7 @@ const GestionAdendaView: React.FC = () => {
                   className="flex items-center gap-2 px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-sm"
                 >
                   <span className="material-symbols-outlined text-sm">sort</span>
-                  <span>Ordenar: {sortField}</span>
+                  <span>Ordenar: {SORT_LABELS[sortField]}</span>
                   <span className="text-xs text-gray-500 uppercase">{sortDirection}</span>
                 </button>
                 <button
@@ -765,7 +771,7 @@ const GestionAdendaView: React.FC = () => {
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Número
+                    Orden
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Estado
@@ -814,7 +820,7 @@ const GestionAdendaView: React.FC = () => {
                     >
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm font-medium text-[#111318]">
-                          {pregunta.numero_formateado}
+                          {pregunta.orden ?? pregunta.numero_formateado}
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">

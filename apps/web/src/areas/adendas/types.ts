@@ -77,6 +77,7 @@ export interface PreguntaAdjuntosResumen {
 export interface PreguntaGestion {
   id: number;
   adenda_id: number | null;
+  orden: number | null;
   numero: number | null;
   numero_formateado: string;
   capitulo: string;

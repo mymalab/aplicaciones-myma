@@ -11,6 +11,8 @@ import type {
   UpdatePreguntaPayload,
 } from '../types';
 import { fetchLatestActivePromptByName } from './promptCatalogService';
+import { getNotebookLmAuthHeaderEntries } from '../../notebooklm/services/notebookLMService';
+import { readStoredNotebookLmAuthPayload } from '../../notebooklm/services/notebookLmCookieStorage';
 
 interface PreguntasCatalogos {
   personas: CatalogoPersona[];
@@ -20,6 +22,7 @@ interface PreguntasCatalogos {
 interface PreguntaRow {
   id: number;
   adenda_id: number | null;
+  orden?: number | null;
   numero: number | null;
   capitulo: string | null;
   texto: string | null;
@@ -88,7 +91,7 @@ const COMPLEJIDADES_VALIDAS: ComplejidadPregunta[] = ['Baja', 'Media', 'Alta'];
 const ADJUNTOS_SELECT =
   'id,question_id,filename,tipo,parte,mime_type,drive_preview_url,drive_web_view_url';
 const PREGUNTAS_SELECT_CORE =
-  'id,adenda_id,numero,capitulo,texto,temas_principales,temas_secundarios,estado,complejidad,created_at';
+  'id,adenda_id,orden,numero,capitulo,texto,temas_principales,temas_secundarios,estado,complejidad,created_at';
 const PREGUNTAS_SELECT_WITH_TEXT_FIELDS =
   `${PREGUNTAS_SELECT_CORE},estrategia,respuesta_ia,respuesta_experto_ia`;
 const PREGUNTAS_SELECT_WITH_TEXT_FIELDS_NO_EXPERTO =
@@ -428,6 +431,7 @@ const mapPreguntaRow = (
   return {
     id: row.id,
     adenda_id: row.adenda_id,
+    orden: toNullableNumber(row.orden),
     numero: row.numero,
     numero_formateado: formatNumero(row.numero),
     capitulo: row.capitulo || '-',
@@ -473,6 +477,7 @@ const selectPreguntasByAdendaId = async (adendaId: number): Promise<PreguntaRow[
     .from('preguntas')
     .select(PREGUNTAS_SELECT_WITH_ASSIGNMENTS)
     .eq('adenda_id', adendaId)
+    .order('orden', { ascending: true })
     .order('numero', { ascending: true })
     .order('id', { ascending: true });
 
@@ -490,6 +495,7 @@ const selectPreguntasByAdendaId = async (adendaId: number): Promise<PreguntaRow[
       .from('preguntas')
       .select(PREGUNTAS_SELECT_WITH_ASSIGNMENTS_NO_EXPERTO)
       .eq('adenda_id', adendaId)
+      .order('orden', { ascending: true })
       .order('numero', { ascending: true })
       .order('id', { ascending: true });
 
@@ -508,6 +514,7 @@ const selectPreguntasByAdendaId = async (adendaId: number): Promise<PreguntaRow[
     .from('preguntas')
     .select(PREGUNTAS_SELECT_LEGACY_WITH_FECHA)
     .eq('adenda_id', adendaId)
+    .order('orden', { ascending: true })
     .order('numero', { ascending: true })
     .order('id', { ascending: true });
 
@@ -523,6 +530,7 @@ const selectPreguntasByAdendaId = async (adendaId: number): Promise<PreguntaRow[
     .from('preguntas')
     .select(PREGUNTAS_SELECT_LEGACY)
     .eq('adenda_id', adendaId)
+    .order('orden', { ascending: true })
     .order('numero', { ascending: true })
     .order('id', { ascending: true });
 
@@ -1080,6 +1088,26 @@ export const generateEstrategiaFromNotebookChat = async (
   return generateNotebookChatByNotebookId(notebookId, normalizedPrompt, 'estrategia');
 };
 
+export const generateEstrategiaFromNotebookChatByNotebookId = async (
+  notebookId: string,
+  prompt: string,
+  options: BuildEstrategiaPromptOptions = {}
+): Promise<string> => {
+  const observationPrompt = prompt.trim();
+  if (!observationPrompt) {
+    throw new Error('La pregunta no contiene texto para enviar al asistente IA.');
+  }
+
+  const promptContext = await buildEstrategiaPromptContext(observationPrompt, options);
+  const normalizedPrompt = promptContext.promptCompleto;
+
+  if (!ADENDAS_NOTEBOOK_CHAT_BASE_URL) {
+    throw new Error('No hay baseUrl configurada para el chat de notebooks.');
+  }
+
+  return generateNotebookChatByNotebookId(notebookId, normalizedPrompt, 'estrategia');
+};
+
 const generateNotebookChatByNotebookId = async (
   notebookId: string,
   prompt: string,
@@ -1094,6 +1122,14 @@ const generateNotebookChatByNotebookId = async (
     normalizedNotebookId
   )}/chat`;
 
+  const storedAuthPayload = readStoredNotebookLmAuthPayload();
+  if (!storedAuthPayload) {
+    throw new Error(
+      'Debes pegar y validar cookies de NotebookLM antes de usar el chat. Usa el boton "Cookies NotebookLM".'
+    );
+  }
+  const authHeaders = getNotebookLmAuthHeaderEntries(storedAuthPayload);
+
   const payloadCandidates = buildNotebookChatPayloadCandidates(prompt);
   const errors: string[] = [];
 
@@ -1103,6 +1139,7 @@ const generateNotebookChatByNotebookId = async (
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...authHeaders,
         },
         body: JSON.stringify(payload),
       });

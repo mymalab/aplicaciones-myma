@@ -7,6 +7,7 @@ import {
   fetchPreguntaById,
   fetchPreguntasCatalogos,
   generateEstrategiaFromNotebookChat,
+  generateEstrategiaFromNotebookChatByNotebookId,
   generateRespuestaIaFromNotebookChatByNotebookId,
   getAdjuntosDescripcion,
   normalizeComplejidadPregunta,
@@ -28,6 +29,11 @@ import {
   fetchPromptCatalog,
   type PromptCatalogItem as CatalogPromptItem,
 } from '../services/promptCatalogService';
+import NotebookLmCookiesDialog from '../../notebooklm/components/NotebookLmCookiesDialog';
+import {
+  readStoredSelectedNotebook,
+  type StoredSelectedNotebook,
+} from '../../notebooklm/services/notebookLmCookieStorage';
 
 interface DraftPregunta {
   estado: EstadoPregunta;
@@ -165,6 +171,18 @@ const PreguntaDetailView: React.FC = () => {
   const [notebookExpertosError, setNotebookExpertosError] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [generatingStrategy, setGeneratingStrategy] = useState(false);
+  const [cookiesDialogOpen, setCookiesDialogOpen] = useState(false);
+  const [selectedNotebookLm, setSelectedNotebookLm] = useState<StoredSelectedNotebook | null>(
+    () => readStoredSelectedNotebook()
+  );
+
+  useEffect(() => {
+    const syncSelectedNotebook = () => {
+      setSelectedNotebookLm(readStoredSelectedNotebook());
+    };
+    window.addEventListener('storage', syncSelectedNotebook);
+    return () => window.removeEventListener('storage', syncSelectedNotebook);
+  }, []);
   const [draft, setDraft] = useState<DraftPregunta | null>(null);
   const [selectedAdjunto, setSelectedAdjunto] = useState<PreguntaAdjunto | null>(null);
   const [showPromptPreview, setShowPromptPreview] = useState(false);
@@ -536,17 +554,25 @@ const PreguntaDetailView: React.FC = () => {
           reloadedOptions.find((item) => item.id === selectedPromptCatalogId) || null;
       }
 
-      const answer = await generateEstrategiaFromNotebookChat(
-        adendaId,
-        preguntaTexto,
-        promptForGeneration
-          ? {
-              promptCatalogoOverride: promptForGeneration.prompt,
-              promptNombreOverride: promptForGeneration.nombre_prompt,
-              promptVersionOverride: promptForGeneration.version,
-            }
-          : {}
-      );
+      const promptOptions = promptForGeneration
+        ? {
+            promptCatalogoOverride: promptForGeneration.prompt,
+            promptNombreOverride: promptForGeneration.nombre_prompt,
+            promptVersionOverride: promptForGeneration.version,
+          }
+        : {};
+
+      const answer = selectedNotebookLm?.notebook_id
+        ? await generateEstrategiaFromNotebookChatByNotebookId(
+            selectedNotebookLm.notebook_id,
+            preguntaTexto,
+            promptOptions
+          )
+        : await generateEstrategiaFromNotebookChat(
+            adendaId,
+            preguntaTexto,
+            promptOptions
+          );
       setDraft((prev) =>
         prev
           ? {
@@ -567,8 +593,13 @@ const PreguntaDetailView: React.FC = () => {
   const handleGenerateRespuestaIa = async () => {
     if (!pregunta || !draft) return;
 
-    if (!selectedNotebookExperto?.notebook_id) {
-      setError('Selecciona un experto con notebook_id válido antes de generar la respuesta IA.');
+    const notebookIdForApi =
+      selectedNotebookLm?.notebook_id || selectedNotebookExperto?.notebook_id;
+
+    if (!notebookIdForApi) {
+      setError(
+        'Selecciona un notebook en "Cookies NotebookLM" o un experto con notebook_id valido antes de generar la respuesta IA.'
+      );
       return;
     }
 
@@ -587,7 +618,7 @@ const PreguntaDetailView: React.FC = () => {
 
     try {
       const answer = await generateRespuestaIaFromNotebookChatByNotebookId(
-        selectedNotebookExperto.notebook_id,
+        notebookIdForApi,
         respuestaIaPayloadInput.payloadInput
       );
 
@@ -834,7 +865,9 @@ const PreguntaDetailView: React.FC = () => {
 
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h1 className="text-4xl font-bold text-[#111318]">{pregunta.numero_formateado}</h1>
+              <h1 className="text-4xl font-bold text-[#111318]">
+                {pregunta.orden ?? pregunta.numero_formateado}
+              </h1>
               <p className="text-sm text-gray-500">ID interno: {pregunta.id}</p>
             </div>
             <div className="flex items-center gap-2">
@@ -1053,8 +1086,8 @@ const PreguntaDetailView: React.FC = () => {
           </div>
 
           <div>
-            <div className="mb-2 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
+            <div className="mb-2 space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <label className="block text-sm font-medium text-gray-500">
                   Estrategia ({formatWordCount(estrategiaWordCount)})
                 </label>
@@ -1062,7 +1095,7 @@ const PreguntaDetailView: React.FC = () => {
                   Prompt: {currentPromptBadgeLabel}
                 </span>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
                   onClick={handleOpenPromptPreview}
@@ -1073,6 +1106,27 @@ const PreguntaDetailView: React.FC = () => {
                   <span className="material-symbols-outlined text-base leading-none">
                     {loadingPromptPreview ? 'hourglass_top' : 'visibility'}
                   </span>
+                </button>
+
+                {selectedNotebookLm && (
+                  <span
+                    className="inline-flex items-center gap-1 rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-[11px] font-medium text-teal-700"
+                    title={`Notebook seleccionado: ${selectedNotebookLm.nombre}`}
+                  >
+                    <span className="material-symbols-outlined text-sm leading-none">
+                      menu_book
+                    </span>
+                    <span>{selectedNotebookLm.nombre}</span>
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setCookiesDialogOpen(true)}
+                  className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-[#111318] hover:bg-gray-50"
+                  title="Pegar y validar cookies de NotebookLM"
+                >
+                  <span className="material-symbols-outlined text-base leading-none">key</span>
+                  <span>Cookies NotebookLM</span>
                 </button>
 
                 {isEditing && (
@@ -1498,6 +1552,12 @@ const PreguntaDetailView: React.FC = () => {
           </div>
         </div>
       )}
+
+      <NotebookLmCookiesDialog
+        open={cookiesDialogOpen}
+        onClose={() => setCookiesDialogOpen(false)}
+        onNotebookSelected={(notebook) => setSelectedNotebookLm(notebook)}
+      />
     </div>
   );
 };

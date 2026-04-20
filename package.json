@@ -4,12 +4,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "turbo run dev",
-    "build": "turbo run build",
-    "start": "node apps/web/server.js",
-    "lint": "turbo run lint",
-    "type-check": "turbo run type-check",
-    "clean": "turbo run clean && rm -rf node_modules"
+    "dev": "node apps/web/dev.js",
+    "build": "npm --prefix apps/web run build",
+    "start": "npm --prefix apps/web run start",
+    "lint": "npm --prefix apps/web run lint",
+    "type-check": "npm --prefix packages/contracts run type-check && npm --prefix apps/web run type-check",
+    "clean": "npm --prefix packages/contracts run clean && npm --prefix apps/web run clean && node -e \"const fs = require('node:fs'); fs.rmSync('.turbo', { recursive: true, force: true }); fs.rmSync('node_modules', { recursive: true, force: true });\""
   },
   "devDependencies": {
     "turbo": "^2.0.0",

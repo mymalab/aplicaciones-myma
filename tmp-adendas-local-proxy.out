@@ -1,0 +1,5 @@
+[icsara] base=http://34.74.6.124:8080 prefix=/v1 apiKeyConfigured=false
+[adendas-local] base=http://127.0.0.1:8000/v1 apiKeyConfigured=true
+[server] mode=development port=3016
+Server is running on port 3016
+[proxy] GET /health/live -> http://127.0.0.1:8000/v1/health/live

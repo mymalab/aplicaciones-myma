@@ -32,6 +32,9 @@ interface ApiErrorResponse {
   detail?: string | null;
 }
 
+const SESSION_INVALID_MESSAGE =
+  'Tu sesion expiro o ya no es valida. Recarga la pagina o vuelve a iniciar sesion.';
+
 const INTERNAL_API_BASE_URL = (
   import.meta.env.VITE_INTERNAL_API_BASE_URL || ''
 )
@@ -41,7 +44,25 @@ const INTERNAL_API_BASE_URL = (
 const buildApiUrl = (path: string) =>
   INTERNAL_API_BASE_URL ? `${INTERNAL_API_BASE_URL}${path}` : path;
 
-const getAccessToken = async () => {
+const getAccessToken = async (forceRefresh = false): Promise<string> => {
+  if (forceRefresh) {
+    const {
+      data: { session },
+      error,
+    } = await supabase.auth.refreshSession();
+
+    if (error) {
+      throw new Error(error.message || SESSION_INVALID_MESSAGE);
+    }
+
+    const refreshedAccessToken = session?.access_token?.trim();
+    if (!refreshedAccessToken) {
+      throw new Error(SESSION_INVALID_MESSAGE);
+    }
+
+    return refreshedAccessToken;
+  }
+
   const {
     data: { session },
     error,
@@ -52,11 +73,15 @@ const getAccessToken = async () => {
   }
 
   const accessToken = session?.access_token?.trim();
-  if (!accessToken) {
-    throw new Error('Tu sesion ya no es valida. Vuelve a iniciar sesion.');
+  if (accessToken) {
+    return accessToken;
   }
 
-  return accessToken;
+  if (session?.refresh_token?.trim()) {
+    return getAccessToken(true);
+  }
+
+  throw new Error(SESSION_INVALID_MESSAGE);
 };
 
 const parseApiErrorMessage = (payload: ApiErrorResponse | null, fallback: string) => {
@@ -75,11 +100,14 @@ const parseApiErrorMessage = (payload: ApiErrorResponse | null, fallback: string
   return fallback;
 };
 
-const apiRequest = async <T>(
+const executeApiRequest = async <T>(
   path: string,
-  options: RequestInit = {}
-): Promise<T> => {
-  const accessToken = await getAccessToken();
+  options: RequestInit,
+  accessToken: string
+): Promise<{
+  response: Response;
+  parsedBody: T | ApiErrorResponse | null;
+}> => {
   const response = await fetch(buildApiUrl(path), {
     ...options,
     headers: {
@@ -101,11 +129,28 @@ const apiRequest = async <T>(
     }
   }
 
+  return { response, parsedBody };
+};
+
+const apiRequest = async <T>(
+  path: string,
+  options: RequestInit = {}
+): Promise<T> => {
+  let accessToken = await getAccessToken();
+  let { response, parsedBody } = await executeApiRequest<T>(path, options, accessToken);
+
+  if (response.status === 401) {
+    accessToken = await getAccessToken(true);
+    ({ response, parsedBody } = await executeApiRequest<T>(path, options, accessToken));
+  }
+
   if (!response.ok) {
     throw new Error(
       parseApiErrorMessage(
         parsedBody as ApiErrorResponse | null,
-        `La solicitud fallo con estado ${response.status}.`
+        response.status === 401
+          ? SESSION_INVALID_MESSAGE
+          : `La solicitud fallo con estado ${response.status}.`
       )
     );
   }

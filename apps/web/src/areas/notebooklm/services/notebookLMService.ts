@@ -116,6 +116,24 @@ export interface ShareNotebookUserResponse {
   [key: string]: unknown;
 }
 
+export interface NotebookLmAuthPayload {
+  version: 1;
+  cookies: Record<string, string>;
+  cookie_names: string[];
+  cookie_domains: string[];
+}
+
+export interface NotebookLmCookieValidationResponse {
+  ok: boolean;
+  message: string;
+  format_detected: string;
+  cookie_domains: string[];
+  selected_cookie_names: string[];
+  missing_required_cookies: string[];
+  token_fetch_ok: boolean;
+  auth_payload: NotebookLmAuthPayload | null;
+}
+
 interface NotebookChatResponse {
   answer?: string | null;
   conversation_id?: string | null;
@@ -155,7 +173,7 @@ export interface NotebookChatResult {
 }
 
 const NOTEBOOK_LM_LOCAL_API_BASE_URL = (
-  import.meta.env.VITE_NOTEBOOK_LM_LOCAL_API_BASE_URL || 'http://127.0.0.1:8000'
+  import.meta.env.VITE_NOTEBOOK_LM_LOCAL_API_BASE_URL || '/api/notebooklm/local'
 )
   .trim()
   .replace(/\/+$/, '');
@@ -191,7 +209,15 @@ const NOTEBOOK_LM_SHARE_API_BEARER_TOKEN = (
   ''
 ).trim();
 
+const NOTEBOOK_LM_AUTH_HEADER_NAME = 'X-NotebookLM-Auth';
+
 export const NOTEBOOK_LM_CHAT_API_DOCS_URL = `${NOTEBOOK_LM_CHAT_API_BASE_URL}/docs`;
+
+const buildNotebookLmLocalApiUrl = (path: string) =>
+  `${NOTEBOOK_LM_LOCAL_API_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`;
+
+const getNotebookLmLocalApiBearerToken = () =>
+  /^https?:\/\//i.test(NOTEBOOK_LM_LOCAL_API_BASE_URL) ? NOTEBOOK_LM_LOCAL_API_BEARER_TOKEN : '';
 
 const normalizeString = (value: unknown): string =>
   typeof value === 'string' ? value.trim() : '';
@@ -201,6 +227,105 @@ const getResponseContentType = (response: Response) =>
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+
+const NETSCAPE_REQUIRED_COLUMNS = 7;
+
+interface PlaywrightCookie {
+  name: string;
+  value: string;
+  domain: string;
+  path: string;
+  expires: number;
+  httpOnly: boolean;
+  secure: boolean;
+  sameSite: 'Lax' | 'None' | 'Strict';
+}
+
+const splitNetscapeLine = (line: string): string[] => {
+  if (line.includes('\t')) {
+    return line.split('\t');
+  }
+  return line.split(/\s+/);
+};
+
+export const convertNetscapeCookiesToStorageStateJson = (
+  rawText: string
+): string | null => {
+  if (!rawText) return null;
+  const cookies: PlaywrightCookie[] = [];
+
+  for (const rawLine of rawText.split(/\r?\n/)) {
+    const trimmed = rawLine.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+
+    const parts = splitNetscapeLine(rawLine.replace(/^#HttpOnly_/, '')).filter(
+      (part) => part !== undefined
+    );
+    if (parts.length < NETSCAPE_REQUIRED_COLUMNS) continue;
+
+    const [domainRaw, _includeSub, pathRaw, secureRaw, expiresRaw, nameRaw, ...valueParts] =
+      parts;
+
+    const name = (nameRaw || '').trim();
+    if (!name) continue;
+
+    const value = valueParts.join('\t').trim();
+    const domain = (domainRaw || '').trim();
+    if (!domain) continue;
+
+    const expiresNumber = Number((expiresRaw || '').trim());
+    const secureFlag = (secureRaw || '').trim().toUpperCase() === 'TRUE';
+    const httpOnlyHint = rawLine.trim().startsWith('#HttpOnly_');
+
+    cookies.push({
+      name,
+      value,
+      domain,
+      path: (pathRaw || '').trim() || '/',
+      expires: Number.isFinite(expiresNumber) && expiresNumber > 0 ? expiresNumber : -1,
+      httpOnly: httpOnlyHint,
+      secure: secureFlag,
+      sameSite: secureFlag ? 'None' : 'Lax',
+    });
+  }
+
+  if (!cookies.length) return null;
+  return JSON.stringify({ cookies, origins: [] }, null, 2);
+};
+
+const looksLikeStorageStateJson = (text: string): boolean => {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return false;
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (Array.isArray(parsed)) return parsed.length > 0 && isRecord(parsed[0]);
+    return isRecord(parsed);
+  } catch {
+    return false;
+  }
+};
+
+const looksLikeNetscapeCookieText = (text: string): boolean => {
+  if (!text) return false;
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const parts = splitNetscapeLine(line);
+    if (parts.length >= NETSCAPE_REQUIRED_COLUMNS) return true;
+  }
+  return false;
+};
+
+export const normalizeCookiesInputForValidation = (rawText: string): string => {
+  const trimmed = rawText.trim();
+  if (!trimmed) return trimmed;
+  if (looksLikeStorageStateJson(trimmed)) return trimmed;
+  if (looksLikeNetscapeCookieText(trimmed)) {
+    const converted = convertNetscapeCookiesToStorageStateJson(trimmed);
+    if (converted) return converted;
+  }
+  return trimmed;
+};
 
 const getNotebookChatErrorMessage = (response: NotebookChatResponse | null): string | null => {
   if (!response) return null;
@@ -352,6 +477,277 @@ const getFilenameFromContentDisposition = (contentDisposition: string | null) =>
   return basicMatch?.[1]?.trim() || '';
 };
 
+const encodeBase64Url = (value: string) => {
+  const bytes = new TextEncoder().encode(value);
+  const binary = Array.from(bytes, (byte) => String.fromCharCode(byte)).join('');
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+};
+
+const buildNotebookLmAuthHeaderValue = (authPayload?: NotebookLmAuthPayload | null) => {
+  if (!authPayload) {
+    return '';
+  }
+
+  const cookies = Object.entries(authPayload.cookies || {}).reduce<Record<string, string>>(
+    (accumulator, [rawName, rawValue]) => {
+      const name = rawName.trim();
+      const value = rawValue.trim();
+      if (name && value) {
+        accumulator[name] = value;
+      }
+      return accumulator;
+    },
+    {}
+  );
+
+  if (!Object.keys(cookies).length) {
+    return '';
+  }
+
+  return encodeBase64Url(
+    JSON.stringify({
+      version: 1,
+      cookies,
+      cookie_names: Array.from(new Set(authPayload.cookie_names.map(normalizeString).filter(Boolean))),
+      cookie_domains: Array.from(
+        new Set(authPayload.cookie_domains.map(normalizeString).filter(Boolean))
+      ),
+    })
+  );
+};
+
+const buildNotebookLmAuthHeaders = (
+  authPayload?: NotebookLmAuthPayload | null
+): Record<string, string> => {
+  const headerValue = buildNotebookLmAuthHeaderValue(authPayload);
+  return headerValue
+    ? {
+        [NOTEBOOK_LM_AUTH_HEADER_NAME]: headerValue,
+      }
+    : {};
+};
+
+export const getNotebookLmAuthHeaderName = (): string => NOTEBOOK_LM_AUTH_HEADER_NAME;
+
+export const getNotebookLmAuthHeaderEntries = (
+  authPayload?: NotebookLmAuthPayload | null
+): Record<string, string> => buildNotebookLmAuthHeaders(authPayload);
+
+const buildNotebookLmRequestHeaders = (
+  baseHeaders: Record<string, string>,
+  options?: {
+    bearerToken?: string;
+    authPayload?: NotebookLmAuthPayload | null;
+  }
+) => {
+  const headers: Record<string, string> = {
+    ...baseHeaders,
+  };
+
+  if (options?.bearerToken) {
+    headers.Authorization = `Bearer ${options.bearerToken}`;
+  }
+
+  return {
+    ...headers,
+    ...buildNotebookLmAuthHeaders(options?.authPayload),
+  };
+};
+
+const mapNotebookLmItemsToOptions = (items: unknown): NotebookOption[] => {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  const uniqueByNotebookId = new Map<string, NotebookOption>();
+  for (const item of items) {
+    if (!isRecord(item)) {
+      continue;
+    }
+
+    const notebookId =
+      normalizeString(item.notebook_id) || normalizeString(item.id) || normalizeString(item.value);
+    const notebookTitle =
+      normalizeString(item.title) ||
+      normalizeString(item.nombre) ||
+      normalizeString(item.name) ||
+      notebookId;
+
+    if (!notebookId || !notebookTitle || uniqueByNotebookId.has(notebookId)) {
+      continue;
+    }
+
+    uniqueByNotebookId.set(notebookId, {
+      id: notebookId,
+      nombre: notebookTitle,
+      notebook_id: notebookId,
+    });
+  }
+
+  return Array.from(uniqueByNotebookId.values());
+};
+
+export const validateNotebookLmCookies = async (
+  rawCookiesText: string
+): Promise<NotebookLmCookieValidationResponse> => {
+  const cookiesText = normalizeCookiesInputForValidation(rawCookiesText);
+  if (!cookiesText) {
+    throw new Error('Pega cookies antes de validarlas.');
+  }
+
+  const endpoint = `${NOTEBOOK_LM_CHAT_API_BASE_URL}/auth/validate-cookies`;
+
+  let response: Response;
+  try {
+    response = await fetch(endpoint, {
+      method: 'POST',
+      headers: buildNotebookLmRequestHeaders(
+        {
+          'Content-Type': 'application/json',
+        },
+        {
+          bearerToken: NOTEBOOK_LM_CHAT_API_BEARER_TOKEN,
+        }
+      ),
+      body: JSON.stringify({
+        cookies_text: cookiesText,
+      }),
+    });
+  } catch (error) {
+    if (error instanceof TypeError && error.message === 'Failed to fetch') {
+      throw new Error(
+        `No se pudo conectar con ${endpoint}. Verifica que la API de NotebookLM este disponible.`
+      );
+    }
+
+    throw error;
+  }
+
+  const rawBody = await response.text();
+  let parsedBody: unknown = null;
+  if (rawBody) {
+    try {
+      parsedBody = JSON.parse(rawBody) as unknown;
+    } catch {
+      parsedBody = rawBody;
+    }
+  }
+
+  if (!response.ok) {
+    const apiMessage =
+      isRecord(parsedBody) && typeof parsedBody.detail === 'string'
+        ? parsedBody.detail
+        : rawBody || `${response.status} ${response.statusText}`;
+    throw new Error(`Error validando cookies: ${apiMessage}`);
+  }
+
+  if (!isRecord(parsedBody)) {
+    throw new Error('La API no devolvio un JSON valido al validar las cookies.');
+  }
+
+  const authPayload =
+    isRecord(parsedBody.auth_payload) && isRecord(parsedBody.auth_payload.cookies)
+      ? ({
+          version: 1,
+          cookies: Object.entries(parsedBody.auth_payload.cookies).reduce<Record<string, string>>(
+            (accumulator, [rawName, rawValue]) => {
+              const name = rawName.trim();
+              const value =
+                typeof rawValue === 'string' ? rawValue : rawValue == null ? '' : String(rawValue);
+              if (name && value) {
+                accumulator[name] = value;
+              }
+              return accumulator;
+            },
+            {}
+          ),
+          cookie_names: Array.isArray(parsedBody.auth_payload.cookie_names)
+            ? parsedBody.auth_payload.cookie_names.map(normalizeString).filter(Boolean)
+            : [],
+          cookie_domains: Array.isArray(parsedBody.auth_payload.cookie_domains)
+            ? parsedBody.auth_payload.cookie_domains.map(normalizeString).filter(Boolean)
+            : [],
+        } satisfies NotebookLmAuthPayload)
+      : null;
+
+  return {
+    ok: Boolean(parsedBody.ok),
+    message:
+      typeof parsedBody.message === 'string' && parsedBody.message.trim()
+        ? parsedBody.message.trim()
+        : 'No se obtuvo un mensaje de validacion.',
+    format_detected:
+      typeof parsedBody.format_detected === 'string' && parsedBody.format_detected.trim()
+        ? parsedBody.format_detected.trim()
+        : 'unknown',
+    cookie_domains: Array.isArray(parsedBody.cookie_domains)
+      ? parsedBody.cookie_domains.map(normalizeString).filter(Boolean)
+      : [],
+    selected_cookie_names: Array.isArray(parsedBody.selected_cookie_names)
+      ? parsedBody.selected_cookie_names.map(normalizeString).filter(Boolean)
+      : [],
+    missing_required_cookies: Array.isArray(parsedBody.missing_required_cookies)
+      ? parsedBody.missing_required_cookies.map(normalizeString).filter(Boolean)
+      : [],
+    token_fetch_ok: Boolean(parsedBody.token_fetch_ok),
+    auth_payload: authPayload,
+  };
+};
+
+export const fetchNotebookLmAccountNotebooks = async (
+  authPayload: NotebookLmAuthPayload
+): Promise<NotebookOption[]> => {
+  const endpoint = `${NOTEBOOK_LM_CHAT_API_BASE_URL}/notebooks`;
+
+  let response: Response;
+  try {
+    response = await fetch(endpoint, {
+      method: 'GET',
+      headers: buildNotebookLmRequestHeaders(
+        {
+          Accept: 'application/json',
+        },
+        {
+          bearerToken: NOTEBOOK_LM_CHAT_API_BEARER_TOKEN,
+          authPayload,
+        }
+      ),
+    });
+  } catch (error) {
+    if (error instanceof TypeError && error.message === 'Failed to fetch') {
+      throw new Error(
+        `No se pudo conectar con ${endpoint}. Verifica que la API de NotebookLM este disponible.`
+      );
+    }
+
+    throw error;
+  }
+
+  const rawBody = await response.text();
+  let parsedBody: unknown = null;
+  if (rawBody) {
+    try {
+      parsedBody = JSON.parse(rawBody) as unknown;
+    } catch {
+      parsedBody = rawBody;
+    }
+  }
+
+  if (!response.ok) {
+    const apiMessage =
+      isRecord(parsedBody) && parsedBody.detail
+        ? String(parsedBody.detail)
+        : rawBody || `${response.status} ${response.statusText}`;
+    throw new Error(`Error al listar notebooks de la cuenta: ${apiMessage}`);
+  }
+
+  if (!isRecord(parsedBody)) {
+    throw new Error('La API no devolvio un JSON valido al listar los notebooks.');
+  }
+
+  return mapNotebookLmItemsToOptions(parsedBody.items);
+};
+
 export const fetchNotebookOptions = async (): Promise<NotebookOption[]> => {
   const parseRows = (rows: Array<Record<string, unknown>> | null): NotebookOption[] => {
     const mapped = (rows || [])
@@ -437,7 +833,8 @@ export const fetchNotebookAuthorizedPeople = async (): Promise<
 export const downloadSeiaDocuments = async (
   payload: DownloadSeiaDocumentsPayload
 ): Promise<DownloadSeiaDocumentsRunResponse> => {
-  const endpoint = `${NOTEBOOK_LM_LOCAL_API_BASE_URL}/api/v1/adenda/descarga-documentos-seia`;
+  const endpoint = buildNotebookLmLocalApiUrl('/descarga-documentos-seia');
+  const localApiBearerToken = getNotebookLmLocalApiBearerToken();
 
   let response: Response;
   try {
@@ -445,9 +842,9 @@ export const downloadSeiaDocuments = async (
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(NOTEBOOK_LM_LOCAL_API_BEARER_TOKEN
+        ...(localApiBearerToken
           ? {
-              Authorization: `Bearer ${NOTEBOOK_LM_LOCAL_API_BEARER_TOKEN}`,
+              Authorization: `Bearer ${localApiBearerToken}`,
             }
           : {}),
       },
@@ -499,9 +896,10 @@ export const getDownloadSeiaDocumentsStatus = async (
     throw new Error('No se recibio un run_id valido para consultar el estado.');
   }
 
-  const endpoint = `${NOTEBOOK_LM_LOCAL_API_BASE_URL}/api/v1/adenda/descarga-documentos-seia/${encodeURIComponent(
-    normalizedRunId
-  )}`;
+  const endpoint = buildNotebookLmLocalApiUrl(
+    `/descarga-documentos-seia/${encodeURIComponent(normalizedRunId)}`
+  );
+  const localApiBearerToken = getNotebookLmLocalApiBearerToken();
 
   let response: Response;
   try {
@@ -509,9 +907,9 @@ export const getDownloadSeiaDocumentsStatus = async (
       method: 'GET',
       headers: {
         Accept: 'application/json',
-        ...(NOTEBOOK_LM_LOCAL_API_BEARER_TOKEN
+        ...(localApiBearerToken
           ? {
-              Authorization: `Bearer ${NOTEBOOK_LM_LOCAL_API_BEARER_TOKEN}`,
+              Authorization: `Bearer ${localApiBearerToken}`,
             }
           : {}),
       },
@@ -555,7 +953,8 @@ export const getDownloadSeiaDocumentsStatus = async (
 };
 
 export const createAndLoadNotebookFiltered = async (
-  payload: CreateAndLoadNotebookFilteredPayload
+  payload: CreateAndLoadNotebookFilteredPayload,
+  authPayload?: NotebookLmAuthPayload | null
 ): Promise<CreateAndLoadNotebookFilteredResponse> => {
   const normalizedNotebookName = normalizeString(payload.nombre_notebook);
   const normalizedNotebookId = normalizeString(payload.notebook_id);
@@ -582,20 +981,21 @@ export const createAndLoadNotebookFiltered = async (
     throw new Error('No hay document_id seleccionados para cargar al notebook.');
   }
 
-  const endpoint = `${NOTEBOOK_LM_LOCAL_API_BASE_URL}/api/v1/adenda/crear-y-cargar-notebook-filtrado`;
+  const endpoint = buildNotebookLmLocalApiUrl('/crear-y-cargar-notebook-filtrado');
 
   let response: Response;
   try {
     response = await fetch(endpoint, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(NOTEBOOK_LM_LOCAL_API_BEARER_TOKEN
-          ? {
-              Authorization: `Bearer ${NOTEBOOK_LM_LOCAL_API_BEARER_TOKEN}`,
-            }
-          : {}),
-      },
+      headers: buildNotebookLmRequestHeaders(
+        {
+          'Content-Type': 'application/json',
+        },
+        {
+          bearerToken: getNotebookLmLocalApiBearerToken(),
+          authPayload,
+        }
+      ),
       body: JSON.stringify(normalizedPayload),
     });
   } catch (error) {
@@ -637,7 +1037,8 @@ export const createAndLoadNotebookFiltered = async (
 };
 
 export const retryNotebookUpload = async (
-  payload: RetryNotebookUploadPayload
+  payload: RetryNotebookUploadPayload,
+  authPayload?: NotebookLmAuthPayload | null
 ): Promise<RetryNotebookUploadResponse> => {
   const normalizedPayload = {
     run_id: payload.run_id.trim(),
@@ -647,20 +1048,21 @@ export const retryNotebookUpload = async (
     throw new Error('No se recibio un run_id valido para reintentar la carga.');
   }
 
-  const endpoint = `${NOTEBOOK_LM_LOCAL_API_BASE_URL}/api/v1/adenda/reintentar-carga-notebook`;
+  const endpoint = buildNotebookLmLocalApiUrl('/reintentar-carga-notebook');
 
   let response: Response;
   try {
     response = await fetch(endpoint, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(NOTEBOOK_LM_LOCAL_API_BEARER_TOKEN
-          ? {
-              Authorization: `Bearer ${NOTEBOOK_LM_LOCAL_API_BEARER_TOKEN}`,
-            }
-          : {}),
-      },
+      headers: buildNotebookLmRequestHeaders(
+        {
+          'Content-Type': 'application/json',
+        },
+        {
+          bearerToken: getNotebookLmLocalApiBearerToken(),
+          authPayload,
+        }
+      ),
       body: JSON.stringify(normalizedPayload),
     });
   } catch (error) {
@@ -709,9 +1111,10 @@ export const downloadRetryDocumentsZip = async (
     throw new Error('No se recibio un run_id valido para descargar los documentos fallidos.');
   }
 
-  const endpoint = `${NOTEBOOK_LM_LOCAL_API_BASE_URL}/api/v1/adenda/descarga-documentos-seia/${encodeURIComponent(
-    normalizedRunId
-  )}/documentos-fallidos.zip`;
+  const endpoint = buildNotebookLmLocalApiUrl(
+    `/descarga-documentos-seia/${encodeURIComponent(normalizedRunId)}/documentos-fallidos.zip`
+  );
+  const localApiBearerToken = getNotebookLmLocalApiBearerToken();
 
   let response: Response;
   try {
@@ -719,9 +1122,9 @@ export const downloadRetryDocumentsZip = async (
       method: 'GET',
       headers: {
         Accept: 'application/zip, application/octet-stream',
-        ...(NOTEBOOK_LM_LOCAL_API_BEARER_TOKEN
+        ...(localApiBearerToken
           ? {
-              Authorization: `Bearer ${NOTEBOOK_LM_LOCAL_API_BEARER_TOKEN}`,
+              Authorization: `Bearer ${localApiBearerToken}`,
             }
           : {}),
       },
@@ -783,9 +1186,10 @@ export const downloadSelectedDocumentsZip = async (
     throw new Error('No se recibieron documentos validos para descargar el zip.');
   }
 
-  const endpoint = `${NOTEBOOK_LM_LOCAL_API_BASE_URL}/api/v1/adenda/descarga-documentos-seia/${encodeURIComponent(
-    normalizedRunId
-  )}/documentos-seleccionados.zip`;
+  const endpoint = buildNotebookLmLocalApiUrl(
+    `/descarga-documentos-seia/${encodeURIComponent(normalizedRunId)}/documentos-seleccionados.zip`
+  );
+  const localApiBearerToken = getNotebookLmLocalApiBearerToken();
 
   let response: Response;
   try {
@@ -794,9 +1198,9 @@ export const downloadSelectedDocumentsZip = async (
       headers: {
         'Content-Type': 'application/json',
         Accept: 'application/zip, application/octet-stream',
-        ...(NOTEBOOK_LM_LOCAL_API_BEARER_TOKEN
+        ...(localApiBearerToken
           ? {
-              Authorization: `Bearer ${NOTEBOOK_LM_LOCAL_API_BEARER_TOKEN}`,
+              Authorization: `Bearer ${localApiBearerToken}`,
             }
           : {}),
       },
@@ -847,7 +1251,8 @@ export const downloadSelectedDocumentsZip = async (
 
 export const shareNotebookWithUser = async (
   notebookId: string,
-  payload: ShareNotebookUserPayload
+  payload: ShareNotebookUserPayload,
+  authPayload?: NotebookLmAuthPayload | null
 ): Promise<ShareNotebookUserResponse> => {
   const normalizedNotebookId = normalizeString(notebookId);
   const normalizedEmail = normalizeString(payload.email);
@@ -868,14 +1273,15 @@ export const shareNotebookWithUser = async (
   try {
     response = await fetch(endpoint, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(NOTEBOOK_LM_SHARE_API_BEARER_TOKEN
-          ? {
-              Authorization: `Bearer ${NOTEBOOK_LM_SHARE_API_BEARER_TOKEN}`,
-            }
-          : {}),
-      },
+      headers: buildNotebookLmRequestHeaders(
+        {
+          'Content-Type': 'application/json',
+        },
+        {
+          bearerToken: NOTEBOOK_LM_SHARE_API_BEARER_TOKEN,
+          authPayload,
+        }
+      ),
       body: JSON.stringify({
         email: normalizedEmail,
         permission: payload.permission,
