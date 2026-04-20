@@ -455,8 +455,8 @@ app.get('/api/notebooklm/local/debug/config', (req, res) => {
 
 app.post('/api/notebooklm/chat/validate-cookies', async (req, res) => {
   await proxyAdendasRequest(req, res, {
-    apiBaseUrl: NOTEBOOK_LM_CHAT_API_BASE_URL,
-    bearerToken: NOTEBOOK_LM_CHAT_API_BEARER_TOKEN,
+    apiBaseUrl: NOTEBOOK_LM_LOCAL_API_BASE_URL,
+    bearerToken: NOTEBOOK_LM_LOCAL_API_BEARER_TOKEN,
     upstreamPath: '/auth/validate-cookies',
     method: 'POST',
   });
@@ -464,8 +464,8 @@ app.post('/api/notebooklm/chat/validate-cookies', async (req, res) => {
 
 app.get('/api/notebooklm/chat/notebooks', async (req, res) => {
   await proxyAdendasRequest(req, res, {
-    apiBaseUrl: NOTEBOOK_LM_CHAT_API_BASE_URL,
-    bearerToken: NOTEBOOK_LM_CHAT_API_BEARER_TOKEN,
+    apiBaseUrl: NOTEBOOK_LM_LOCAL_API_BASE_URL,
+    bearerToken: NOTEBOOK_LM_LOCAL_API_BEARER_TOKEN,
     forwardedHeaders: ['X-NotebookLM-Auth'],
     upstreamPath: '/notebooks',
     method: 'GET',
