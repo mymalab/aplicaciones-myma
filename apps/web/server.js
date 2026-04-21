@@ -42,6 +42,13 @@ const NOTEBOOK_LM_LOCAL_API_BEARER_TOKEN = (
   process.env.VITE_NOTEBOOK_LM_LOCAL_API_BEARER_TOKEN ||
   ''
 ).trim();
+const NOTEBOOK_LM_API_BASE_URL = (
+  process.env.NOTEBOOK_LM_API_BASE_URL ||
+  'http://34.74.6.124/api/notebooklm'
+).trim().replace(/\/+$/, '');
+const NOTEBOOK_LM_API_BEARER_TOKEN = (
+  process.env.NOTEBOOK_LM_API_BEARER_TOKEN || ''
+).trim();
 const NOTEBOOK_LM_CHAT_API_BASE_URL = (
   process.env.NOTEBOOK_LM_CHAT_API_BASE_URL ||
   process.env.VITE_NOTEBOOK_LM_CHAT_API_BASE_URL ||
@@ -71,6 +78,11 @@ console.log(
 console.log(
   `[notebooklm-local] base=${NOTEBOOK_LM_LOCAL_API_BASE_URL} bearerConfigured=${Boolean(
     NOTEBOOK_LM_LOCAL_API_BEARER_TOKEN
+  )}`,
+);
+console.log(
+  `[notebooklm-api] base=${NOTEBOOK_LM_API_BASE_URL} bearerConfigured=${Boolean(
+    NOTEBOOK_LM_API_BEARER_TOKEN
   )}`,
 );
 console.log(
@@ -455,8 +467,8 @@ app.get('/api/notebooklm/local/debug/config', (req, res) => {
 
 app.post('/api/notebooklm/chat/validate-cookies', async (req, res) => {
   await proxyAdendasRequest(req, res, {
-    apiBaseUrl: NOTEBOOK_LM_LOCAL_API_BASE_URL,
-    bearerToken: NOTEBOOK_LM_LOCAL_API_BEARER_TOKEN,
+    apiBaseUrl: NOTEBOOK_LM_API_BASE_URL,
+    bearerToken: NOTEBOOK_LM_API_BEARER_TOKEN,
     upstreamPath: '/auth/validate-cookies',
     method: 'POST',
   });
@@ -464,8 +476,8 @@ app.post('/api/notebooklm/chat/validate-cookies', async (req, res) => {
 
 app.get('/api/notebooklm/chat/notebooks', async (req, res) => {
   await proxyAdendasRequest(req, res, {
-    apiBaseUrl: NOTEBOOK_LM_LOCAL_API_BASE_URL,
-    bearerToken: NOTEBOOK_LM_LOCAL_API_BEARER_TOKEN,
+    apiBaseUrl: NOTEBOOK_LM_API_BASE_URL,
+    bearerToken: NOTEBOOK_LM_API_BEARER_TOKEN,
     forwardedHeaders: ['X-NotebookLM-Auth'],
     upstreamPath: '/notebooks',
     method: 'GET',
