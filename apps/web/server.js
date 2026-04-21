@@ -484,6 +484,16 @@ app.get('/api/notebooklm/chat/notebooks', async (req, res) => {
   });
 });
 
+app.post('/api/notebooklm/chat/notebooks/:notebookId/chat', async (req, res) => {
+  await proxyAdendasRequest(req, res, {
+    apiBaseUrl: NOTEBOOK_LM_API_BASE_URL,
+    bearerToken: NOTEBOOK_LM_API_BEARER_TOKEN,
+    forwardedHeaders: ['X-NotebookLM-Auth'],
+    upstreamPath: `/notebooks/${encodeURIComponent(req.params.notebookId)}/chat`,
+    method: 'POST',
+  });
+});
+
 app.post('/api/notebooklm/local/descarga-documentos-seia', async (req, res) => {
   await proxyAdendasRequest(req, res, {
     apiBaseUrl: NOTEBOOK_LM_LOCAL_API_BASE_URL,
