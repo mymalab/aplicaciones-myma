@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAreas } from '@shared/rbac/useAreas';
 import AreaSelector from '@shared/rbac/AreaSelector';
 import AppShellHeader from '@shared/layout/AppShellHeader';
+import { filterSupportedAreas } from '@shared/rbac/supportedAreas';
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -14,6 +15,7 @@ interface MainLayoutProps {
 const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   const navigate = useNavigate();
   const { areas, loading } = useAreas();
+  const availableAreas = filterSupportedAreas(areas);
 
   if (loading) {
     return (
@@ -28,7 +30,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
 
   return (
     <div className="min-h-screen bg-[#f8fafc]">
-      {areas.length > 1 && (
+      {availableAreas.length > 1 && (
         <AppShellHeader
           beforeUserContent={
             <>

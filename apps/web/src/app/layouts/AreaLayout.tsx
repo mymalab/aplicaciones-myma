@@ -8,6 +8,7 @@ import AcreditacionSidebar from '@areas/acreditacion/components/Sidebar';
 import ProveedoresSidebar from '@areas/proveedores/components/Sidebar';
 import PersonasSidebar from '@areas/personas/components/Sidebar';
 import AdendasSidebar from '@areas/adendas/components/Sidebar';
+import FinanzasSidebar from '@areas/finanzas/components/Sidebar';
 import NotebookLMSidebar from '@areas/notebooklm/components/Sidebar';
 
 interface AreaLayoutProps {
@@ -67,6 +68,15 @@ const AreaLayout: React.FC<AreaLayoutProps> = ({ children }) => {
       case AreaId.PROVEEDORES:
         return (
           <ProveedoresSidebar
+            isOpen={sidebarOpen}
+            onClose={() => setSidebarOpen(false)}
+            activeView={getActiveView() as any}
+            hideOnDesktop={isFilterSidebarOpen}
+          />
+        );
+      case AreaId.FINANZAS:
+        return (
+          <FinanzasSidebar
             isOpen={sidebarOpen}
             onClose={() => setSidebarOpen(false)}
             activeView={getActiveView() as any}

@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAreas } from './useAreas';
 import { AreaId, AREAS } from '@contracts/areas';
+import { filterSupportedAreas } from './supportedAreas';
 
 interface AreaSelectorProps {
   className?: string;
@@ -13,6 +14,7 @@ const AreaSelector: React.FC<AreaSelectorProps> = ({ className = '' }) => {
   const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const availableAreas = filterSupportedAreas(areas);
 
   // Cerrar dropdown al hacer click fuera
   useEffect(() => {
@@ -32,7 +34,7 @@ const AreaSelector: React.FC<AreaSelectorProps> = ({ className = '' }) => {
   }, [isOpen]);
 
   // Si solo hay una área, no mostrar selector
-  if (areas.length <= 1) {
+  if (availableAreas.length <= 1) {
     return null;
   }
 
@@ -75,7 +77,7 @@ const AreaSelector: React.FC<AreaSelectorProps> = ({ className = '' }) => {
       {isOpen && (
         <div className="absolute top-full left-0 mt-2 w-64 bg-white rounded-lg shadow-xl border border-gray-200 overflow-hidden z-50">
           <div className="p-2">
-            {areas.map((areaId) => {
+            {availableAreas.map((areaId) => {
               const area = getAreaInfo(areaId);
               const isActive = currentAreaId === areaId;
               
