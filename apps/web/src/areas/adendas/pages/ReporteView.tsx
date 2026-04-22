@@ -8,7 +8,7 @@ import { adendasPregunta } from '../utils/routes';
 
 interface AlertaPregunta {
   id: string;
-  codigoMyma: string;
+  adendaId: string;
   preguntaId: number;
   pregunta: string;
   detalle: string;
@@ -173,16 +173,14 @@ const ReporteView: React.FC = () => {
     return preguntas
       .filter(
         (pregunta) =>
-          pregunta.complejidad === 'Alta' && pregunta.estado !== 'Completadas'
+          pregunta.complejidad === 'Alta' &&
+          pregunta.estado !== 'Completadas' &&
+          pregunta.adenda_id !== null
       )
       .map((pregunta) => {
-        const codigoMyma =
-          pregunta.codigo_myma ||
-          (pregunta.adenda_id !== null ? String(pregunta.adenda_id) : '');
-
         return {
           id: pregunta.numero_formateado,
-          codigoMyma,
+          adendaId: String(pregunta.adenda_id),
           preguntaId: pregunta.id,
           pregunta: truncateText(pregunta.texto, 100),
           detalle: truncateText(
@@ -461,7 +459,7 @@ const ReporteView: React.FC = () => {
               <tbody className="bg-white divide-y divide-gray-200">
                 {alertasVisibles.map((alerta) => (
                   <tr
-                    key={`${alerta.codigoMyma}-${alerta.preguntaId}`}
+                    key={`${alerta.adendaId}-${alerta.preguntaId}`}
                     className="hover:bg-gray-50"
                   >
                     <td className="px-4 py-4 whitespace-nowrap">
@@ -498,11 +496,11 @@ const ReporteView: React.FC = () => {
                       </div>
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap">
-                      {alerta.codigoMyma ? (
+                      {alerta.adendaId ? (
                         <button
                           onClick={() =>
                             navigate(
-                              adendasPregunta(alerta.codigoMyma, String(alerta.preguntaId))
+                              adendasPregunta(alerta.adendaId, alerta.preguntaId)
                             )
                           }
                           className="text-sm text-primary hover:text-primary-hover hover:underline"

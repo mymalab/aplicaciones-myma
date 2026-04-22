@@ -12,12 +12,12 @@ export const adendasEdit = (id: string | number) =>
 export const adendasDetail = (codigoMyma: string) =>
   `${ADENDAS_BASE_PATH}/detail/${encodeURIComponent(codigoMyma)}`;
 
-export const adendasGestion = (codigoMyma: string) =>
-  `${ADENDAS_BASE_PATH}/gestion/${encodeURIComponent(codigoMyma)}`;
+export const adendasGestion = (adendaId: string | number) =>
+  `${ADENDAS_BASE_PATH}/gestion/${encodeURIComponent(String(adendaId))}`;
 
-export const adendasPregunta = (codigoMyma: string, preguntaId: string) =>
+export const adendasPregunta = (adendaId: string | number, preguntaId: string | number) =>
   `${ADENDAS_BASE_PATH}/gestion/${encodeURIComponent(
-    codigoMyma
+    String(adendaId)
   )}/pregunta/${encodeURIComponent(preguntaId)}`;
 
 export const adendasReporte = () => `${ADENDAS_BASE_PATH}/reporte`;

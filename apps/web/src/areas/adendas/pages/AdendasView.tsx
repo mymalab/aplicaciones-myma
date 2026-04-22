@@ -48,11 +48,7 @@ const AdendasView: React.FC = () => {
 
   const handleRowClick = (adenda: AdendaListItem) => {
     // Navegar a la gestión de adenda usando el código MyMA o el ID
-    if (adenda.codigo_myma) {
-      navigate(adendasGestion(adenda.codigo_myma));
-    } else {
-      navigate(adendasGestion(String(adenda.id)));
-    }
+    navigate(adendasGestion(adenda.id));
   };
 
   const filteredAdendas = adendas.filter((adenda) => {

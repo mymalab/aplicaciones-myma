@@ -18,8 +18,8 @@ const AdendasRoutes: React.FC = () => {
       <Route path="create" element={<AdendaForm />} />
       <Route path="edit/:id" element={<AdendaForm />} />
       <Route path="detail/:codigoMyma" element={<AdendaDetailView />} />
-      <Route path="gestion/:codigoMyma" element={<GestionAdendaView />} />
-      <Route path="gestion/:codigoMyma/pregunta/:preguntaId" element={<PreguntaDetailView />} />
+      <Route path="gestion/:adendaId" element={<GestionAdendaView />} />
+      <Route path="gestion/:adendaId/pregunta/:preguntaId" element={<PreguntaDetailView />} />
       <Route path="reporte" element={<ReporteView />} />
       <Route path="prompts" element={<PromptsCatalogoGestion />} />
       <Route path="/" element={<Navigate to="" replace />} />

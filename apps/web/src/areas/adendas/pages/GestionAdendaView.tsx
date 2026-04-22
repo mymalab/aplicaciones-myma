@@ -1,11 +1,11 @@
 ﻿import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
-  fetchPreguntasByCodigoMyma,
+  fetchPreguntasByAdendaId,
   normalizeComplejidadPregunta,
   normalizeEstadoPregunta,
 } from '../services/preguntasService';
-import { fetchAdendaByCodigoMyma } from '../services/adendasService';
+import { fetchAdendaById } from '../services/adendasService';
 import type {
   ComplejidadPregunta,
   EstadoPregunta,
@@ -132,7 +132,7 @@ const getEstadoFechaCompromiso = (
 
 const GestionAdendaView: React.FC = () => {
   const navigate = useNavigate();
-  const { codigoMyma } = useParams<{ codigoMyma: string }>();
+  const { adendaId } = useParams<{ adendaId: string }>();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -152,12 +152,16 @@ const GestionAdendaView: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
 
   const pageSize = 10;
+  const adendaIdNumber = useMemo(() => {
+    const parsed = Number(adendaId);
+    return Number.isFinite(parsed) ? parsed : null;
+  }, [adendaId]);
 
   useEffect(() => {
     let isMounted = true;
 
     const loadPreguntas = async () => {
-      if (!codigoMyma) {
+      if (adendaIdNumber === null) {
         if (isMounted) {
           setError('No se recibió el identificador de adenda.');
           setFechaEntrega(null);
@@ -171,8 +175,8 @@ const GestionAdendaView: React.FC = () => {
         setError(null);
 
         const [{ preguntas: data }, adenda] = await Promise.all([
-          fetchPreguntasByCodigoMyma(codigoMyma),
-          fetchAdendaByCodigoMyma(codigoMyma),
+          fetchPreguntasByAdendaId(adendaIdNumber),
+          fetchAdendaById(adendaIdNumber),
         ]);
 
         if (!isMounted) return;
@@ -198,7 +202,7 @@ const GestionAdendaView: React.FC = () => {
     return () => {
       isMounted = false;
     };
-  }, [codigoMyma]);
+  }, [adendaIdNumber]);
 
   const especialidadesDisponibles = useMemo(() => {
     const all = preguntas
@@ -334,12 +338,12 @@ const GestionAdendaView: React.FC = () => {
   };
 
   const handlePreguntaClick = (preguntaId: number) => {
-    if (!codigoMyma) {
+    if (adendaIdNumber === null) {
       navigate(adendasList());
       return;
     }
 
-    navigate(adendasPregunta(codigoMyma, String(preguntaId)));
+    navigate(adendasPregunta(adendaIdNumber, preguntaId));
   };
 
   const handleSortClick = () => {

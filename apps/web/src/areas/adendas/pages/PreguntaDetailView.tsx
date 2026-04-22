@@ -155,7 +155,7 @@ const getPromptOptionLabel = (item: CatalogPromptItem): string => {
 
 const PreguntaDetailView: React.FC = () => {
   const navigate = useNavigate();
-  const { codigoMyma, preguntaId } = useParams<{ codigoMyma?: string; preguntaId: string }>();
+  const { adendaId, preguntaId } = useParams<{ adendaId?: string; preguntaId: string }>();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -418,8 +418,8 @@ const PreguntaDetailView: React.FC = () => {
   }, [pregunta?.id]);
 
   const handleBack = () => {
-    if (codigoMyma) {
-      navigate(adendasGestion(codigoMyma));
+    if (adendaId) {
+      navigate(adendasGestion(adendaId));
       return;
     }
 

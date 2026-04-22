@@ -693,6 +693,23 @@ export const resolveAdendaId = async (codigoMyma: string): Promise<number> => {
   throw new Error(`No se encontró una adenda para "${codigoMyma}".`);
 };
 
+export const fetchPreguntasByAdendaId = async (
+  adendaId: number,
+  catalogos?: PreguntasCatalogos
+): Promise<{ adendaId: number; preguntas: PreguntaGestion[]; catalogos: PreguntasCatalogos }> => {
+  if (!Number.isFinite(adendaId)) {
+    throw new Error('No se recibiÃ³ un identificador de adenda vÃ¡lido.');
+  }
+
+  const catalogosUsados = catalogos || (await fetchPreguntasCatalogos());
+  const rows = await selectPreguntasByAdendaId(adendaId);
+
+  const { personasMap, especialidadesMap } = getCatalogMaps(catalogosUsados);
+  const preguntas = rows.map((row) => mapPreguntaRow(row, personasMap, especialidadesMap));
+
+  return { adendaId, preguntas, catalogos: catalogosUsados };
+};
+
 export const fetchCatalogoPersonasActivas = async (): Promise<CatalogoPersona[]> => {
   const { data, error } = await supabase
     .from('dim_core_persona')
@@ -801,13 +818,7 @@ export const fetchPreguntasByCodigoMyma = async (
   catalogos?: PreguntasCatalogos
 ): Promise<{ adendaId: number; preguntas: PreguntaGestion[]; catalogos: PreguntasCatalogos }> => {
   const adendaId = await resolveAdendaId(codigoMyma);
-  const catalogosUsados = catalogos || (await fetchPreguntasCatalogos());
-  const rows = await selectPreguntasByAdendaId(adendaId);
-
-  const { personasMap, especialidadesMap } = getCatalogMaps(catalogosUsados);
-  const preguntas = rows.map((row) => mapPreguntaRow(row, personasMap, especialidadesMap));
-
-  return { adendaId, preguntas, catalogos: catalogosUsados };
+  return fetchPreguntasByAdendaId(adendaId, catalogos);
 };
 
 export const fetchPreguntaById = async (
