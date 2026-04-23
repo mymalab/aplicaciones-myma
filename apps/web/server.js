@@ -579,6 +579,38 @@ app.post(
   }
 );
 
+app.post(
+  '/api/notebooklm/local/descarga-documentos-seia/:runId/documentos-seleccionados/export',
+  async (req, res) => {
+    await proxyAdendasRequest(req, res, {
+      apiBaseUrl: NOTEBOOK_LM_LOCAL_API_BASE_URL,
+      bearerToken: NOTEBOOK_LM_LOCAL_API_BEARER_TOKEN,
+      upstreamPath: `/api/v1/adenda/descarga-documentos-seia/${encodeURIComponent(
+        req.params.runId
+      )}/documentos-seleccionados/export`,
+      method: 'POST',
+      timeoutMs: NOTEBOOK_ZIP_DOWNLOAD_TIMEOUT_MS,
+    });
+  }
+);
+
+app.get(
+  '/api/notebooklm/local/descarga-documentos-seia/:runId/documentos-seleccionados/export/:exportId/part/:partIndex',
+  async (req, res) => {
+    await proxyAdendasRequest(req, res, {
+      apiBaseUrl: NOTEBOOK_LM_LOCAL_API_BASE_URL,
+      bearerToken: NOTEBOOK_LM_LOCAL_API_BEARER_TOKEN,
+      upstreamPath: `/api/v1/adenda/descarga-documentos-seia/${encodeURIComponent(
+        req.params.runId
+      )}/documentos-seleccionados/export/${encodeURIComponent(
+        req.params.exportId
+      )}/part/${encodeURIComponent(req.params.partIndex)}`,
+      method: 'GET',
+      timeoutMs: NOTEBOOK_ZIP_DOWNLOAD_TIMEOUT_MS,
+    });
+  }
+);
+
 app.post('/api/notebooklm/local/crear-y-cargar-notebook-filtrado', async (req, res) => {
   await proxyAdendasRequest(req, res, {
     apiBaseUrl: NOTEBOOK_LM_LOCAL_API_BASE_URL,

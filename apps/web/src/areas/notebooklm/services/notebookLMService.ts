@@ -101,6 +101,14 @@ export interface DownloadSelectedDocumentsZipPayload {
   selected_document_ids: string[];
 }
 
+interface SelectedDocumentsZipExportResponse {
+  export_id: string;
+  filename: string;
+  size_bytes: number;
+  part_size_bytes: number;
+  parts: number;
+}
+
 export type NotebookSharePermission = 'viewer' | 'editor';
 
 export interface ShareNotebookUserPayload {
@@ -475,6 +483,24 @@ const getFilenameFromContentDisposition = (contentDisposition: string | null) =>
 
   const basicMatch = contentDisposition.match(/filename\s*=\s*\"?([^\";]+)\"?/i);
   return basicMatch?.[1]?.trim() || '';
+};
+
+const readApiErrorMessage = async (response: Response) => {
+  const rawBody = await response.text();
+  if (!rawBody) {
+    return `${response.status} ${response.statusText}`;
+  }
+
+  try {
+    const parsedBody = JSON.parse(rawBody) as unknown;
+    if (isRecord(parsedBody) && parsedBody.detail) {
+      return String(parsedBody.detail);
+    }
+  } catch {
+    // Si no es JSON, devolvemos el texto plano recortado para evitar mensajes enormes.
+  }
+
+  return rawBody.slice(0, 500);
 };
 
 const encodeBase64Url = (value: string) => {
@@ -1187,7 +1213,7 @@ export const downloadSelectedDocumentsZip = async (
   }
 
   const endpoint = buildNotebookLmLocalApiUrl(
-    `/descarga-documentos-seia/${encodeURIComponent(normalizedRunId)}/documentos-seleccionados.zip`
+    `/descarga-documentos-seia/${encodeURIComponent(normalizedRunId)}/documentos-seleccionados/export`
   );
   const localApiBearerToken = getNotebookLmLocalApiBearerToken();
 
@@ -1219,32 +1245,54 @@ export const downloadSelectedDocumentsZip = async (
   }
 
   if (!response.ok) {
-    const rawBody = await response.text();
+    const apiMessage = await readApiErrorMessage(response);
 
-    let parsedBody: unknown = null;
-    if (rawBody) {
-      try {
-        parsedBody = JSON.parse(rawBody) as unknown;
-      } catch {
-        parsedBody = rawBody;
-      }
-    }
-
-    const apiMessage =
-      typeof parsedBody === 'object' && parsedBody && 'detail' in parsedBody
-        ? String((parsedBody as { detail?: unknown }).detail)
-        : rawBody || `${response.status} ${response.statusText}`;
-
-    throw new Error(`Error al descargar el zip de documentos: ${apiMessage}`);
+    throw new Error(`Error al preparar el zip de documentos: ${apiMessage}`);
   }
 
-  const blob = await response.blob();
+  const exportPayload = (await response.json()) as Partial<SelectedDocumentsZipExportResponse>;
+  const exportId = normalizeString(exportPayload.export_id);
+  const parts = Number(exportPayload.parts);
+  if (!exportId || !Number.isFinite(parts) || parts < 1) {
+    throw new Error('La API no devolvio una metadata valida para descargar el zip por partes.');
+  }
+
+  const blobParts: BlobPart[] = [];
+  for (let partIndex = 0; partIndex < parts; partIndex += 1) {
+    const partEndpoint = buildNotebookLmLocalApiUrl(
+      `/descarga-documentos-seia/${encodeURIComponent(
+        normalizedRunId
+      )}/documentos-seleccionados/export/${encodeURIComponent(exportId)}/part/${partIndex}`
+    );
+
+    const partResponse = await fetch(partEndpoint, {
+      method: 'GET',
+      headers: {
+        Accept: 'application/octet-stream',
+        ...(localApiBearerToken
+          ? {
+              Authorization: `Bearer ${localApiBearerToken}`,
+            }
+          : {}),
+      },
+    });
+
+    if (!partResponse.ok) {
+      const apiMessage = await readApiErrorMessage(partResponse);
+      throw new Error(
+        `Error al descargar la parte ${partIndex + 1} de ${parts} del zip: ${apiMessage}`
+      );
+    }
+
+    blobParts.push(await partResponse.blob());
+  }
+
   const filename =
-    getFilenameFromContentDisposition(response.headers.get('content-disposition')) ||
+    normalizeString(exportPayload.filename) ||
     `documentos-para-notebook-${normalizedRunId.slice(0, 8) || 'corrida'}.zip`;
 
   return {
-    blob,
+    blob: new Blob(blobParts, { type: 'application/zip' }),
     filename,
   };
 };
