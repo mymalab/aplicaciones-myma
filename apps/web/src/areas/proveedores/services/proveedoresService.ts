@@ -39,6 +39,61 @@ export interface ProveedorResponse {
   updated_at: string;
 }
 
+const toPlainObject = (value: unknown): Record<string, unknown> => {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return {};
+    }
+
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      return {};
+    }
+  }
+
+  return {};
+};
+
+const toText = (value: unknown): string => {
+  if (typeof value === 'string') {
+    return value.trim();
+  }
+
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value).trim();
+  }
+
+  return '';
+};
+
+export const getProveedorCorreoContacto = (
+  proveedor: Pick<ProveedorResponse, 'informacion_contacto' | 'correo_contacto'>
+): string => {
+  const informacionContacto = toPlainObject(proveedor.informacion_contacto);
+  const contactoComercial = toPlainObject(informacionContacto.contacto_comercial);
+  const correoContacto = toText(contactoComercial.correo);
+
+  return correoContacto || toText(proveedor.correo_contacto);
+};
+
+export const getProveedorNombreContacto = (
+  proveedor: Pick<ProveedorResponse, 'informacion_contacto'>
+): string => {
+  const informacionContacto = toPlainObject(proveedor.informacion_contacto);
+  const contactoComercial = toPlainObject(informacionContacto.contacto_comercial);
+
+  return toText(contactoComercial.nombre);
+};
+
 /**
  * Calcular la clasificación basada en el porcentaje de evaluación
  * Nueva lógica: convertir porcentaje a decimal (0-1) y aplicar umbrales

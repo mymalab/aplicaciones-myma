@@ -15,6 +15,8 @@ import {
   fetchServiciosCatalogoNormalizadosByRut,
   ProveedorServicioCatalogoNormalizado,
   extractEspecialidadesFromJsonb,
+  getProveedorCorreoContacto,
+  getProveedorNombreContacto,
 } from '../services/proveedoresService';
 import { usePermissions } from '@shared/rbac/usePermissions';
 import { supabase } from '@shared/api-client/supabase';
@@ -705,7 +707,12 @@ const EvaluacionServicios2025: React.FC = () => {
       setFormData((prev) => ({
         ...prev,
         proveedorId: value,
-        correoContacto: proveedorSeleccionado?.correo_contacto || '',
+        nombreContacto: proveedorSeleccionado
+          ? getProveedorNombreContacto(proveedorSeleccionado)
+          : '',
+        correoContacto: proveedorSeleccionado
+          ? getProveedorCorreoContacto(proveedorSeleccionado)
+          : '',
         servicio: '',
         especialidad: '',
       }));
