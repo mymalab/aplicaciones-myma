@@ -5,6 +5,8 @@ import { dirname, join } from 'path';
 import { readFileSync } from 'fs';
 import http from 'http';
 import https from 'https';
+import { Readable } from 'stream';
+import { pipeline } from 'stream/promises';
 import { registerNotebookChatRoutes } from './server/notebookChat.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -67,6 +69,14 @@ const parsedTimeoutMs = Number.parseInt(
 const UPSTREAM_TIMEOUT_MS = Number.isFinite(parsedTimeoutMs) && parsedTimeoutMs > 0
   ? parsedTimeoutMs
   : 120000;
+const parsedZipDownloadTimeoutMs = Number.parseInt(
+  process.env.NOTEBOOK_ZIP_DOWNLOAD_TIMEOUT_MS ?? '',
+  10,
+);
+const NOTEBOOK_ZIP_DOWNLOAD_TIMEOUT_MS =
+  Number.isFinite(parsedZipDownloadTimeoutMs) && parsedZipDownloadTimeoutMs > 0
+    ? parsedZipDownloadTimeoutMs
+    : 1200000;
 
 app.use(express.json({ limit: '300mb' }));
 console.log(
@@ -96,6 +106,36 @@ const trimTrailingSlash = (value) => value.replace(/\/+$/, '');
 const buildUpstreamEndpoint = (baseUrl, upstreamPath) => {
   const normalizedPath = upstreamPath.startsWith('/') ? upstreamPath : `/${upstreamPath}`;
   return `${trimTrailingSlash(baseUrl)}${normalizedPath}`;
+};
+
+const forwardDownloadHeaders = (upstreamResponse, res) => {
+  const headerNames = [
+    'content-type',
+    'content-disposition',
+    'content-length',
+    'cache-control',
+    'last-modified',
+    'etag',
+  ];
+
+  for (const headerName of headerNames) {
+    const headerValue = upstreamResponse.headers.get(headerName);
+    if (headerValue) {
+      res.setHeader(headerName, headerValue);
+    }
+  }
+};
+
+const sendFetchResponse = async (upstreamResponse, res) => {
+  forwardDownloadHeaders(upstreamResponse, res);
+  res.status(upstreamResponse.status);
+
+  if (!upstreamResponse.body) {
+    res.end();
+    return;
+  }
+
+  await pipeline(Readable.fromWeb(upstreamResponse.body), res);
 };
 
 const proxyLegacyAcreditacionPost = async (req, res, upstreamPath) => {
@@ -220,10 +260,11 @@ const proxyAdendasRequest = async (
     upstreamPath,
     method = 'GET',
     streamBody = false,
+    timeoutMs = UPSTREAM_TIMEOUT_MS,
   },
 ) => {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   const endpoint = buildUpstreamEndpoint(apiBaseUrl, upstreamPath);
   const requestStartedAt = Date.now();
 
@@ -275,25 +316,19 @@ const proxyAdendasRequest = async (
 
     const upstreamResponse = await fetch(endpoint, fetchOptions);
 
-    const contentType = upstreamResponse.headers.get('content-type');
-    const contentDisposition = upstreamResponse.headers.get('content-disposition');
-    if (contentType) {
-      res.setHeader('Content-Type', contentType);
-    }
-    if (contentDisposition) {
-      res.setHeader('Content-Disposition', contentDisposition);
-    }
-
-    const responseBody = Buffer.from(await upstreamResponse.arrayBuffer());
-    res.status(upstreamResponse.status).send(responseBody);
+    await sendFetchResponse(upstreamResponse, res);
   } catch (error) {
     const isTimeout = error?.name === 'AbortError';
     console.error(`[proxy] Error calling ${endpoint}:`, error);
+    if (res.headersSent) {
+      res.destroy(error);
+      return;
+    }
     res.status(502).json({
       error: 'Upstream API unavailable',
       endpoint: upstreamPath,
       timeout: isTimeout,
-      timeoutMs: UPSTREAM_TIMEOUT_MS,
+      timeoutMs,
       elapsedMs: Date.now() - requestStartedAt,
     });
   } finally {
@@ -524,6 +559,7 @@ app.get(
         req.params.runId
       )}/documentos-fallidos.zip`,
       method: 'GET',
+      timeoutMs: NOTEBOOK_ZIP_DOWNLOAD_TIMEOUT_MS,
     });
   }
 );
@@ -538,6 +574,7 @@ app.post(
         req.params.runId
       )}/documentos-seleccionados.zip`,
       method: 'POST',
+      timeoutMs: NOTEBOOK_ZIP_DOWNLOAD_TIMEOUT_MS,
     });
   }
 );

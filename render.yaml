@@ -28,6 +28,8 @@ services:
         value: http://34.74.6.124
       - key: NOTEBOOK_LM_LOCAL_API_BEARER_TOKEN
         sync: false
+      - key: NOTEBOOK_ZIP_DOWNLOAD_TIMEOUT_MS
+        value: 1200000
       # Variables opcionales - si necesitas usar variables diferentes a las por defecto
       # - key: ICSARA_API_KEY
       #   value: your-icsara-api-key
