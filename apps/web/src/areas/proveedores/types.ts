@@ -39,6 +39,8 @@ export interface Proveedor {
   promedio_nota_total_ponderada?: number | null; // Decimal 0-1
   clasificacion: Clasificacion;
   activo: boolean;
+  competencia_directa?: boolean | null;
+  habilitado?: boolean | null;
   tieneServiciosEjecutados?: boolean; // Indica si el proveedor tiene servicios ejecutados
   cantidad_a?: number; // Cantidad de evaluaciones con clasificación A
   cantidad_b?: number; // Cantidad de evaluaciones con clasificación B
@@ -102,5 +104,4 @@ export interface ProveedorPotencial {
   created_at?: string;
   updated_at?: string;
 }
-
 

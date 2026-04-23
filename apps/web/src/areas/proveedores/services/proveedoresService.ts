@@ -12,6 +12,8 @@ export interface ProveedorData {
   pagina_web?: string | null;
   direccion?: ProveedorJsonb;
   informacion_contacto?: ProveedorJsonb;
+  competencia_directa?: boolean | null;
+  habilitado?: boolean | null;
   evaluacion?: number | null;
   clasificacion?: string | null;
 }
@@ -26,6 +28,8 @@ export interface ProveedorResponse {
   pagina_web?: string | null;
   direccion?: ProveedorJsonb;
   informacion_contacto?: ProveedorJsonb;
+  competencia_directa?: boolean | null;
+  habilitado?: boolean | null;
   evaluacion?: number | null;
   clasificacion?: string | null;
   categoria_proveedor?: string | null;

@@ -108,6 +108,23 @@ const toText = (value: unknown): string => {
   return String(value);
 };
 
+const toBoolean = (value: unknown): boolean => {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+
+  if (typeof value === 'number') {
+    return value === 1;
+  }
+
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    return ['true', '1', 'si', 'sí', 'yes', 'y', 'habilitado', 'activo'].includes(normalized);
+  }
+
+  return false;
+};
+
 const toDireccionDetalle = (value: unknown): DireccionDetalleFormData => {
   const obj = toPlainObject(value);
 
@@ -161,6 +178,8 @@ const NuevoProveedor: React.FC = () => {
     correo_contacto: '',
     tipo_proveedor: 'Empresa',
     pagina_web: '',
+    competencia_directa: false,
+    habilitado: false,
     evaluacion: null,
     clasificacion: null,
   });
@@ -188,6 +207,8 @@ const NuevoProveedor: React.FC = () => {
     // Si no hay evaluación pero hay clasificación guardada, usar esa
     return formData.clasificacion || null;
   }, [formData.evaluacion, formData.clasificacion]);
+
+  const competenciaDirectaActiva = formData.competencia_directa === true;
 
   const especialidadesSeleccionadasDetalle = useMemo(() => {
     const selectedIds = new Set(especialidadesSeleccionadas);
@@ -248,6 +269,8 @@ const NuevoProveedor: React.FC = () => {
           correo_contacto: proveedor.correo_contacto || '',
           tipo_proveedor: proveedor.tipo_proveedor || 'Empresa',
           pagina_web: proveedor.pagina_web || '',
+          competencia_directa: toBoolean(proveedor.competencia_directa),
+          habilitado: toBoolean(proveedor.competencia_directa) ? false : toBoolean(proveedor.habilitado),
           evaluacion: evaluacionValue,
           clasificacion: clasificacionValue,
         });
@@ -326,7 +349,52 @@ const NuevoProveedor: React.FC = () => {
     };
   }, [popupEditor]);
 
+  useEffect(() => {
+    if (!competenciaDirectaActiva || formData.habilitado === false) {
+      return;
+    }
+
+    setFormData((prev) => {
+      if (prev.competencia_directa !== true || prev.habilitado === false) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        habilitado: false,
+      };
+    });
+  }, [competenciaDirectaActiva, formData.habilitado]);
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    if (e.target instanceof HTMLInputElement && e.target.type === 'checkbox') {
+      const { name, checked } = e.target;
+
+      setFormData((prev) => {
+        if (name === 'competencia_directa') {
+          return {
+            ...prev,
+            competencia_directa: checked,
+            habilitado: checked ? false : prev.habilitado ?? false,
+          };
+        }
+
+        if (name === 'habilitado') {
+          return {
+            ...prev,
+            habilitado: checked,
+          };
+        }
+
+        return {
+          ...prev,
+          [name]: checked,
+        };
+      });
+      setError(null);
+      return;
+    }
+
     const { name, value } = e.target;
     
     // Si es el campo de evaluación, convertir a número
@@ -451,6 +519,9 @@ const NuevoProveedor: React.FC = () => {
         contacto_adicional_2: contactoAdicional2,
       };
 
+      const competenciaDirecta = formData.competencia_directa === true;
+      const habilitado = competenciaDirecta ? false : formData.habilitado === true;
+
       const dataToSend: ProveedorData = {
         nombre_proveedor: formData.nombre_proveedor.trim(),
         rut: formData.rut?.trim() || null,
@@ -458,6 +529,8 @@ const NuevoProveedor: React.FC = () => {
         correo_contacto: formData.correo_contacto?.trim() || null,
         tipo_proveedor: formData.tipo_proveedor || null,
         pagina_web: formData.pagina_web?.trim() || null,
+        competencia_directa: competenciaDirecta,
+        habilitado,
         direccion:
           hasAnyValue(direccionSucursal) || hasAnyValue(direccionCasaMatriz)
             ? direccionPayload
@@ -642,7 +715,97 @@ const NuevoProveedor: React.FC = () => {
               />
             </div>
 
-            {/* Quinta fila: Direccion (JSONB amigable) */}
+            {/* Quinta fila: Estado comercial */}
+            <div className="space-y-3">
+              <div>
+                <h3 className="text-sm font-semibold text-[#111318]">Estado comercial</h3>
+                <p className="mt-1 text-xs text-gray-500">
+                  Si el proveedor es competencia directa, queda deshabilitado automaticamente.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <label
+                  htmlFor="competencia_directa"
+                  className={`flex items-start gap-3 rounded-xl border px-4 py-4 transition-all cursor-pointer ${
+                    competenciaDirectaActiva
+                      ? 'border-amber-300 bg-amber-50'
+                      : 'border-gray-200 bg-white hover:border-gray-300'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    id="competencia_directa"
+                    name="competencia_directa"
+                    checked={competenciaDirectaActiva}
+                    onChange={handleChange}
+                    className="mt-1 h-4 w-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+                  />
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold text-[#111318]">Competencia directa</span>
+                      <span
+                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                          competenciaDirectaActiva
+                            ? 'bg-amber-100 text-amber-700'
+                            : 'bg-slate-100 text-slate-600'
+                        }`}
+                      >
+                        {competenciaDirectaActiva ? 'Si' : 'No'}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-600">
+                      Marcalo si este proveedor compite directamente con Myma.
+                    </p>
+                  </div>
+                </label>
+
+                <label
+                  htmlFor="habilitado"
+                  className={`flex items-start gap-3 rounded-xl border px-4 py-4 transition-all ${
+                    competenciaDirectaActiva
+                      ? 'border-gray-200 bg-gray-50 opacity-80 cursor-not-allowed'
+                      : formData.habilitado
+                        ? 'border-green-300 bg-green-50 cursor-pointer'
+                        : 'border-gray-200 bg-white hover:border-gray-300 cursor-pointer'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    id="habilitado"
+                    name="habilitado"
+                    checked={formData.habilitado === true}
+                    onChange={handleChange}
+                    disabled={competenciaDirectaActiva}
+                    className="mt-1 h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500 disabled:cursor-not-allowed disabled:opacity-60"
+                  />
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold text-[#111318]">Habilitado</span>
+                      <span
+                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                          formData.habilitado
+                            ? 'bg-green-100 text-green-700'
+                            : 'bg-red-100 text-red-700'
+                        }`}
+                      >
+                        {formData.habilitado ? 'Si' : 'No'}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-600">
+                      Indica si el proveedor esta habilitado para operar o contratar.
+                    </p>
+                    {competenciaDirectaActiva && (
+                      <p className="text-xs font-medium text-amber-700">
+                        Se desactiva automaticamente mientras el proveedor sea competencia directa.
+                      </p>
+                    )}
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            {/* Sexta fila: Direccion (JSONB amigable) */}
             <div className="space-y-4">
               <h3 className="text-sm font-semibold text-[#111318]">Direccion</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -679,7 +842,7 @@ const NuevoProveedor: React.FC = () => {
               </div>
             </div>
 
-            {/* Sexta fila: Informacion de contacto (JSONB amigable) */}
+            {/* Septima fila: Informacion de contacto (JSONB amigable) */}
             <div className="space-y-4">
               <h3 className="text-sm font-semibold text-[#111318]">Informacion de contacto</h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -716,7 +879,7 @@ const NuevoProveedor: React.FC = () => {
               </div>
             </div>
 
-            {/* Septima fila: Especialidades */}
+            {/* Octava fila: Especialidades */}
             <div>
               <div className="flex items-center justify-between mb-2">
                 <label className="block text-sm font-medium text-gray-700">

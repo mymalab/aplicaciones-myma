@@ -64,6 +64,61 @@ const toText = (value: unknown): string => {
   return String(value).trim();
 };
 
+const toNullableBoolean = (value: unknown): boolean | null => {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+
+  if (typeof value === 'number') {
+    if (value === 1) return true;
+    if (value === 0) return false;
+    return null;
+  }
+
+  if (typeof value === 'string') {
+    const normalized = normalizeSearchText(value);
+
+    if (['true', '1', 'si', 'yes', 'y', 'habilitado', 'activo'].includes(normalized)) {
+      return true;
+    }
+
+    if (['false', '0', 'no', 'n', 'deshabilitado', 'inhabilitado', 'inactivo'].includes(normalized)) {
+      return false;
+    }
+  }
+
+  return null;
+};
+
+const renderBooleanBadge = (
+  value: boolean | null | undefined,
+  {
+    trueLabel = 'Si',
+    falseLabel = 'No',
+    trueClassName = 'bg-green-100 text-green-700 border-green-200',
+    falseClassName = 'bg-gray-100 text-gray-700 border-gray-200',
+  }: {
+    trueLabel?: string;
+    falseLabel?: string;
+    trueClassName?: string;
+    falseClassName?: string;
+  } = {}
+) => {
+  if (value === null || value === undefined) {
+    return <span className="text-sm text-gray-400">-</span>;
+  }
+
+  return (
+    <span
+      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${
+        value ? trueClassName : falseClassName
+      }`}
+    >
+      {value ? trueLabel : falseLabel}
+    </span>
+  );
+};
+
 const toContactoDetalleProveedor = (value: unknown): ContactoDetalleProveedor => {
   const obj = toPlainObject(value);
 
@@ -278,6 +333,8 @@ const ProveedoresActuales: React.FC = () => {
       evaluacion: evaluacionFinal,
       clasificacion: clasificacionFinal,
       activo: true,
+      competencia_directa: toNullableBoolean(response.competencia_directa),
+      habilitado: toNullableBoolean(response.habilitado),
       tieneServiciosEjecutados,
       cantidad_a: response.cantidad_a ?? 0,
       cantidad_b: response.cantidad_b ?? 0,
@@ -734,6 +791,10 @@ const ProveedoresActuales: React.FC = () => {
                       ULT. ACTUALIZACION
                     </th>
                     <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700">ESTADO</th>
+                    <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700 whitespace-nowrap">
+                      COMPETENCIA DIRECTA
+                    </th>
+                    <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700">HABILITADO</th>
                     <th
                       className="text-left py-4 px-6 text-sm font-semibold text-gray-700 cursor-help"
                       title="Promedio de las evaluaciones anteriores de los servicios que el proveedor ha entregado a Myma (0% a 100%). Rangos: >76.4% = A, 50%-76.4% = B, <50% = C."
@@ -869,6 +930,18 @@ const ProveedoresActuales: React.FC = () => {
                         >
                           {proveedor.tieneServiciosEjecutados ? 'Con servicios ejecutados' : 'Sin servicios ejecutados'}
                         </span>
+                      </td>
+                      <td className="py-4 px-6">
+                        {renderBooleanBadge(proveedor.competencia_directa, {
+                          trueClassName: 'bg-amber-100 text-amber-700 border-amber-200',
+                          falseClassName: 'bg-slate-100 text-slate-700 border-slate-200',
+                        })}
+                      </td>
+                      <td className="py-4 px-6">
+                        {renderBooleanBadge(proveedor.habilitado, {
+                          trueClassName: 'bg-green-100 text-green-700 border-green-200',
+                          falseClassName: 'bg-red-100 text-red-700 border-red-200',
+                        })}
                       </td>
                       <td className="py-4 px-6">
                         {proveedor.tieneServiciosEjecutados ? (
