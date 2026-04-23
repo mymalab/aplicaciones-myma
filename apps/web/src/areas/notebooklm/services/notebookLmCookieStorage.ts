@@ -101,3 +101,26 @@ export const writeStoredNotebookLmValidation = (
     /* noop */
   }
 };
+
+export const readStoredNotebookLmValidation =
+  (): NotebookLmCookieValidationResponse | null => {
+    try {
+      const raw = localStorage.getItem(NOTEBOOK_COOKIE_VALIDATION_STORAGE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as NotebookLmCookieValidationResponse;
+      if (!parsed || typeof parsed !== 'object') return null;
+      return parsed;
+    } catch {
+      return null;
+    }
+  };
+
+export const clearStoredNotebookLmState = (): void => {
+  try {
+    localStorage.removeItem(NOTEBOOK_COOKIE_RAW_STORAGE_KEY);
+    localStorage.removeItem(NOTEBOOK_COOKIE_AUTH_STORAGE_KEY);
+    localStorage.removeItem(NOTEBOOK_COOKIE_VALIDATION_STORAGE_KEY);
+  } catch {
+    /* noop */
+  }
+};

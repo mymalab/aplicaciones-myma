@@ -62,6 +62,7 @@ const NOTEBOOK_LM_CHAT_API_BEARER_TOKEN = (
   process.env.VITE_NOTEBOOK_LM_LOCAL_API_BEARER_TOKEN ||
   ''
 ).trim();
+const NOTEBOOK_LM_USER_JWT_HEADER = 'X-Myma-User-JWT';
 const parsedTimeoutMs = Number.parseInt(
   process.env.ACREDITACION_UPSTREAM_TIMEOUT_MS ?? '',
   10,
@@ -106,6 +107,16 @@ const trimTrailingSlash = (value) => value.replace(/\/+$/, '');
 const buildUpstreamEndpoint = (baseUrl, upstreamPath) => {
   const normalizedPath = upstreamPath.startsWith('/') ? upstreamPath : `/${upstreamPath}`;
   return `${trimTrailingSlash(baseUrl)}${normalizedPath}`;
+};
+const extractBearerTokenFromAuthorizationHeader = (value) => {
+  if (typeof value !== 'string') {
+    return '';
+  }
+  const [scheme, token] = value.split(/\s+/, 2);
+  if (!scheme || !token || scheme.toLowerCase() !== 'bearer') {
+    return '';
+  }
+  return token.trim();
 };
 
 const forwardDownloadHeaders = (upstreamResponse, res) => {
@@ -257,6 +268,7 @@ const proxyAdendasRequest = async (
     apiKey = '',
     bearerToken = '',
     forwardedHeaders = [],
+    forwardUserJwtFromAuthorization = false,
     upstreamPath,
     method = 'GET',
     streamBody = false,
@@ -277,6 +289,16 @@ const proxyAdendasRequest = async (
     }
     if (bearerToken) {
       headers.authorization = `Bearer ${bearerToken}`;
+    }
+
+    if (forwardUserJwtFromAuthorization) {
+      const authorizationHeader = Array.isArray(req.headers.authorization)
+        ? req.headers.authorization[0]
+        : req.headers.authorization;
+      const userJwt = extractBearerTokenFromAuthorizationHeader(authorizationHeader);
+      if (userJwt) {
+        headers[NOTEBOOK_LM_USER_JWT_HEADER] = userJwt;
+      }
     }
 
     for (const headerName of forwardedHeaders) {
@@ -504,6 +526,7 @@ app.post('/api/notebooklm/chat/validate-cookies', async (req, res) => {
   await proxyAdendasRequest(req, res, {
     apiBaseUrl: NOTEBOOK_LM_API_BASE_URL,
     bearerToken: NOTEBOOK_LM_API_BEARER_TOKEN,
+    forwardUserJwtFromAuthorization: true,
     upstreamPath: '/auth/validate-cookies',
     method: 'POST',
   });
@@ -514,6 +537,7 @@ app.get('/api/notebooklm/chat/notebooks', async (req, res) => {
     apiBaseUrl: NOTEBOOK_LM_API_BASE_URL,
     bearerToken: NOTEBOOK_LM_API_BEARER_TOKEN,
     forwardedHeaders: ['X-NotebookLM-Auth'],
+    forwardUserJwtFromAuthorization: true,
     upstreamPath: '/notebooks',
     method: 'GET',
   });
@@ -616,6 +640,7 @@ app.post('/api/notebooklm/local/crear-y-cargar-notebook-filtrado', async (req, r
     apiBaseUrl: NOTEBOOK_LM_LOCAL_API_BASE_URL,
     bearerToken: NOTEBOOK_LM_LOCAL_API_BEARER_TOKEN,
     forwardedHeaders: ['X-NotebookLM-Auth'],
+    forwardUserJwtFromAuthorization: true,
     upstreamPath: '/api/v1/adenda/crear-y-cargar-notebook-filtrado',
     method: 'POST',
   });
@@ -626,6 +651,7 @@ app.post('/api/notebooklm/local/reintentar-carga-notebook', async (req, res) => 
     apiBaseUrl: NOTEBOOK_LM_LOCAL_API_BASE_URL,
     bearerToken: NOTEBOOK_LM_LOCAL_API_BEARER_TOKEN,
     forwardedHeaders: ['X-NotebookLM-Auth'],
+    forwardUserJwtFromAuthorization: true,
     upstreamPath: '/api/v1/adenda/reintentar-carga-notebook',
     method: 'POST',
   });
@@ -636,8 +662,39 @@ app.post('/api/notebooklm/local/notebooks/:notebookId/share/users', async (req, 
     apiBaseUrl: NOTEBOOK_LM_LOCAL_API_BASE_URL,
     bearerToken: NOTEBOOK_LM_LOCAL_API_BEARER_TOKEN,
     forwardedHeaders: ['X-NotebookLM-Auth'],
+    forwardUserJwtFromAuthorization: true,
     upstreamPath: `/notebooks/${encodeURIComponent(req.params.notebookId)}/share/users`,
     method: 'POST',
+  });
+});
+
+app.post('/api/notebooklm/local/credentials', async (req, res) => {
+  await proxyAdendasRequest(req, res, {
+    apiBaseUrl: NOTEBOOK_LM_LOCAL_API_BASE_URL,
+    bearerToken: NOTEBOOK_LM_LOCAL_API_BEARER_TOKEN,
+    forwardUserJwtFromAuthorization: true,
+    upstreamPath: '/api/v1/adenda/notebook/credentials',
+    method: 'POST',
+  });
+});
+
+app.get('/api/notebooklm/local/credentials/status', async (req, res) => {
+  await proxyAdendasRequest(req, res, {
+    apiBaseUrl: NOTEBOOK_LM_LOCAL_API_BASE_URL,
+    bearerToken: NOTEBOOK_LM_LOCAL_API_BEARER_TOKEN,
+    forwardUserJwtFromAuthorization: true,
+    upstreamPath: '/api/v1/adenda/notebook/credentials/status',
+    method: 'GET',
+  });
+});
+
+app.delete('/api/notebooklm/local/credentials', async (req, res) => {
+  await proxyAdendasRequest(req, res, {
+    apiBaseUrl: NOTEBOOK_LM_LOCAL_API_BASE_URL,
+    bearerToken: NOTEBOOK_LM_LOCAL_API_BEARER_TOKEN,
+    forwardUserJwtFromAuthorization: true,
+    upstreamPath: '/api/v1/adenda/notebook/credentials',
+    method: 'DELETE',
   });
 });
 

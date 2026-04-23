@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import NotebookLmAuthBanner from '../components/NotebookLmAuthBanner';
 import {
   createAndLoadNotebookFiltered,
+  deleteNotebookLmCredentials,
   downloadSelectedDocumentsZip,
   downloadRetryDocumentsZip,
   downloadSeiaDocuments,
@@ -9,6 +11,7 @@ import {
   getDownloadSeiaDocumentsStatus,
   retryNotebookUpload,
   shareNotebookWithUser,
+  storeNotebookLmCredentials,
   validateNotebookLmCookies,
 } from '../services/notebookLMService';
 import type {
@@ -20,6 +23,15 @@ import type {
   NotebookOption,
   NotebookSharePermission,
 } from '../services/notebookLMService';
+import {
+  clearStoredNotebookLmState,
+  readStoredNotebookLmRawCookies,
+  readStoredNotebookLmValidation,
+  writeStoredNotebookLmAuthPayload,
+  writeStoredNotebookLmRawCookies,
+  writeStoredNotebookLmValidation,
+} from '../services/notebookLmCookieStorage';
+import { useNotebookLmAuthStatus } from '../hooks/useNotebookLmAuthStatus';
 
 type NotebookDocumentType = 'EIA' | 'DIA' | 'ADENDA';
 type NotebookTargetMode = 'new' | 'existing';
@@ -91,9 +103,6 @@ const HIDDEN_DOM_TABLE_COLUMNS = new Set([
 ]);
 
 const DOM_STATUS_POLL_INTERVAL_MS = 5000;
-const NOTEBOOK_COOKIE_RAW_STORAGE_KEY = 'myma.notebooklm.cookies.raw';
-const NOTEBOOK_COOKIE_AUTH_STORAGE_KEY = 'myma.notebooklm.cookies.auth';
-const NOTEBOOK_COOKIE_VALIDATION_STORAGE_KEY = 'myma.notebooklm.cookies.validation';
 
 const NOTEBOOK_LM_WEB_BASE_URL = (
   import.meta.env.VITE_NOTEBOOK_LM_WEB_BASE_URL || 'https://notebooklm.google.com'
@@ -123,18 +132,6 @@ const MODULE_STEPS = [
 ];
 
 const normalizeKeyword = (value: string) => value.trim().toLowerCase();
-
-const parseStoredJson = <T,>(rawValue: string | null): T | null => {
-  if (!rawValue) {
-    return null;
-  }
-
-  try {
-    return JSON.parse(rawValue) as T;
-  } catch {
-    return null;
-  }
-};
 
 const isValidHttpUrl = (value: string) => {
   try {
@@ -309,6 +306,11 @@ const progressMessageStyle: React.CSSProperties = {
 };
 
 const NotebookLMView: React.FC = () => {
+  const {
+    status: notebookAuthStatus,
+    loading: loadingNotebookAuthStatus,
+    refresh: refreshNotebookAuthStatus,
+  } = useNotebookLmAuthStatus(true);
   const [activeModule, setActiveModule] = useState<NotebookModuleStep>('01');
   const [documentUrl, setDocumentUrl] = useState('');
   const [documentType, setDocumentType] = useState<NotebookDocumentType>('EIA');
@@ -359,24 +361,17 @@ const NotebookLMView: React.FC = () => {
     useState<PendingNotebookUpload | null>(null);
 
   useEffect(() => {
-    const storedRawCookies = localStorage.getItem(NOTEBOOK_COOKIE_RAW_STORAGE_KEY) || '';
-    const storedAuth = parseStoredJson<NotebookLmAuthPayload>(
-      localStorage.getItem(NOTEBOOK_COOKIE_AUTH_STORAGE_KEY)
-    );
-    const storedValidation = parseStoredJson<NotebookLmCookieValidationResponse>(
-      localStorage.getItem(NOTEBOOK_COOKIE_VALIDATION_STORAGE_KEY)
-    );
-
-    setNotebookCookiesInput(storedRawCookies);
-    setNotebookCookieAuth(storedAuth);
-    setNotebookCookieValidation(storedValidation);
+    setNotebookCookiesInput(readStoredNotebookLmRawCookies());
+    setNotebookCookieValidation(readStoredNotebookLmValidation());
+    setNotebookCookieAuth(null);
   }, []);
 
   useEffect(() => {
     let mounted = true;
 
     const loadNotebooks = async () => {
-      if (!notebookCookieAuth) {
+      const canUseServerCredentials = Boolean(notebookAuthStatus?.valid);
+      if (!notebookCookieAuth && !canUseServerCredentials) {
         if (!mounted) {
           return;
         }
@@ -384,7 +379,7 @@ const NotebookLMView: React.FC = () => {
         setLoadingNotebooks(false);
         setAvailableNotebooks([]);
         setNotebooksError(
-          'Pega y valida cookies para listar los notebooks de la cuenta que esta usando la app.'
+          'Valida y guarda cookies para listar los notebooks de la cuenta que esta usando la app.'
         );
         return;
       }
@@ -414,7 +409,7 @@ const NotebookLMView: React.FC = () => {
     return () => {
       mounted = false;
     };
-  }, [notebookCookieAuth]);
+  }, [notebookAuthStatus?.valid, notebookCookieAuth]);
 
   useEffect(() => {
     let mounted = true;
@@ -487,10 +482,11 @@ const NotebookLMView: React.FC = () => {
     setNotebookId('');
   }, [notebookTargetMode, resolvedExistingNotebookId]);
 
-  const hasValidNotebookCookieAuth =
+  const hasLocalNotebookCookieAuth =
     Boolean(notebookCookieAuth) &&
     Boolean(notebookCookieValidation?.ok) &&
     Boolean(notebookCookieValidation?.token_fetch_ok);
+  const hasValidNotebookCookieAuth = hasLocalNotebookCookieAuth || Boolean(notebookAuthStatus?.valid);
   const notebookCookieDomains = notebookCookieValidation?.cookie_domains || [];
   const notebookCookieNames = notebookCookieValidation?.selected_cookie_names || [];
   const notebookCookieMissingRequired =
@@ -774,9 +770,9 @@ const NotebookLMView: React.FC = () => {
         auth_payload: null,
       });
       setNotebookCookieAuth(null);
-      localStorage.setItem(NOTEBOOK_COOKIE_RAW_STORAGE_KEY, '');
-      localStorage.removeItem(NOTEBOOK_COOKIE_AUTH_STORAGE_KEY);
-      localStorage.removeItem(NOTEBOOK_COOKIE_VALIDATION_STORAGE_KEY);
+      writeStoredNotebookLmRawCookies('');
+      writeStoredNotebookLmAuthPayload(null);
+      writeStoredNotebookLmValidation(null);
       return;
     }
 
@@ -784,23 +780,30 @@ const NotebookLMView: React.FC = () => {
     try {
       const response = await validateNotebookLmCookies(rawCookies);
       setNotebookCookieValidation(response);
-      localStorage.setItem(NOTEBOOK_COOKIE_RAW_STORAGE_KEY, rawCookies);
-      localStorage.setItem(
-        NOTEBOOK_COOKIE_VALIDATION_STORAGE_KEY,
-        JSON.stringify(response)
-      );
+      writeStoredNotebookLmRawCookies(rawCookies);
+      writeStoredNotebookLmValidation(response);
 
       if (response.ok && response.token_fetch_ok && response.auth_payload) {
         setNotebookCookieAuth(response.auth_payload);
-        localStorage.setItem(
-          NOTEBOOK_COOKIE_AUTH_STORAGE_KEY,
-          JSON.stringify(response.auth_payload)
-        );
+        writeStoredNotebookLmAuthPayload(response.auth_payload);
+        try {
+          await storeNotebookLmCredentials(rawCookies);
+          await refreshNotebookAuthStatus();
+        } catch (storeError) {
+          const validationMessage =
+            storeError instanceof Error
+              ? storeError.message
+              : 'Las cookies se validaron, pero no pudimos guardarlas en tu cuenta.';
+          setNotebookCookieValidation({
+            ...response,
+            message: `${response.message} ${validationMessage}`.trim(),
+          });
+        }
         return;
       }
 
       setNotebookCookieAuth(null);
-      localStorage.removeItem(NOTEBOOK_COOKIE_AUTH_STORAGE_KEY);
+      writeStoredNotebookLmAuthPayload(null);
     } catch (error) {
       const nextValidation: NotebookLmCookieValidationResponse = {
         ok: false,
@@ -817,33 +820,46 @@ const NotebookLMView: React.FC = () => {
       };
       setNotebookCookieValidation(nextValidation);
       setNotebookCookieAuth(null);
-      localStorage.setItem(NOTEBOOK_COOKIE_RAW_STORAGE_KEY, rawCookies);
-      localStorage.setItem(
-        NOTEBOOK_COOKIE_VALIDATION_STORAGE_KEY,
-        JSON.stringify(nextValidation)
-      );
-      localStorage.removeItem(NOTEBOOK_COOKIE_AUTH_STORAGE_KEY);
+      writeStoredNotebookLmRawCookies(rawCookies);
+      writeStoredNotebookLmValidation(nextValidation);
+      writeStoredNotebookLmAuthPayload(null);
     } finally {
       setIsValidatingNotebookCookies(false);
     }
   };
 
-  const handleClearNotebookCookies = () => {
+  const handleClearNotebookCookies = async () => {
     setNotebookCookiesInput('');
     setNotebookCookieAuth(null);
     setNotebookCookieValidation(null);
+    clearStoredNotebookLmState();
+
+    const shouldDeleteServerCredentials = window.confirm(
+      'Se limpiaran las cookies guardadas en este navegador. ¿Tambien quieres eliminar las credenciales guardadas en tu cuenta MyMA?'
+    );
+
+    if (shouldDeleteServerCredentials) {
+      try {
+        await deleteNotebookLmCredentials();
+      } catch (error) {
+        setErrorMessage(
+          error instanceof Error
+            ? error.message
+            : 'No pudimos eliminar las credenciales guardadas en tu cuenta.'
+        );
+      }
+    }
+
+    await refreshNotebookAuthStatus();
     setAvailableNotebooks([]);
     setLoadingNotebooks(false);
     setNotebooksError(
-      'Pega y valida cookies para listar los notebooks de la cuenta que esta usando la app.'
+      'Valida y guarda cookies para listar los notebooks de la cuenta que esta usando la app.'
     );
-    localStorage.removeItem(NOTEBOOK_COOKIE_RAW_STORAGE_KEY);
-    localStorage.removeItem(NOTEBOOK_COOKIE_AUTH_STORAGE_KEY);
-    localStorage.removeItem(NOTEBOOK_COOKIE_VALIDATION_STORAGE_KEY);
   };
 
   const handleShareNotebook = async () => {
-    if (!hasValidNotebookCookieAuth || !notebookCookieAuth) {
+    if (!hasValidNotebookCookieAuth) {
       setShareFeedback({
         tone: 'error',
         message:
@@ -884,7 +900,7 @@ const NotebookLMView: React.FC = () => {
             permission: sharePermission,
             notify: true,
             welcome_message: 'Te comparto este notebook.',
-          }, notebookCookieAuth);
+          }, notebookCookieAuth || undefined);
           sharedEmails.push(person.email);
         } catch (error) {
           failedShares.push(
@@ -912,6 +928,7 @@ const NotebookLMView: React.FC = () => {
         feedbackParts.push(failedShares.join(' '));
       }
 
+      await refreshNotebookAuthStatus();
       setShareFeedback({
         tone:
           failedShares.length > 0 || skippedPeople.length > 0
@@ -1001,7 +1018,7 @@ const NotebookLMView: React.FC = () => {
       return;
     }
 
-    if (!hasValidNotebookCookieAuth || !notebookCookieAuth) {
+    if (!hasValidNotebookCookieAuth) {
       setErrorMessage(
         'Valida y guarda cookies de NotebookLM antes de crear, reutilizar o cargar notebooks.'
       );
@@ -1086,7 +1103,10 @@ const NotebookLMView: React.FC = () => {
               notebook_id: resolvedNotebookIdForSubmit,
             };
 
-      const response = await createAndLoadNotebookFiltered(requestPayload, notebookCookieAuth);
+      const response = await createAndLoadNotebookFiltered(
+        requestPayload,
+        notebookCookieAuth || undefined
+      );
       const queuedRunId = normalizeApiString(response.run_id) || domRunId;
       const responseNotebookId = extractNotebookIdFromResponse(response);
       const plannedNotebookId =
@@ -1115,6 +1135,7 @@ const NotebookLMView: React.FC = () => {
       }));
       setDomPollingMode('uploading');
       setDomPollingKey((current) => current + 1);
+      await refreshNotebookAuthStatus();
     } catch (error) {
       const nextErrorMessage =
         error instanceof Error
@@ -1142,7 +1163,7 @@ const NotebookLMView: React.FC = () => {
       return;
     }
 
-    if (!hasValidNotebookCookieAuth || !notebookCookieAuth) {
+    if (!hasValidNotebookCookieAuth) {
       setErrorMessage(
         'Valida y guarda cookies de NotebookLM antes de reintentar la carga.'
       );
@@ -1165,7 +1186,7 @@ const NotebookLMView: React.FC = () => {
     }));
 
     try {
-      await retryNotebookUpload({ run_id: domRunId }, notebookCookieAuth);
+      await retryNotebookUpload({ run_id: domRunId }, notebookCookieAuth || undefined);
       const refreshedStatus = await getDownloadSeiaDocumentsStatus(domRunId);
       const normalizedStatus = String(refreshedStatus.status || 'running').toLowerCase();
       const incomingDocuments = Array.isArray(refreshedStatus.documents)
@@ -1194,6 +1215,7 @@ const NotebookLMView: React.FC = () => {
       if (normalizedStatus === 'success' || normalizedStatus === 'partial_success') {
         finalizeNotebookPreparation(refreshedStatus, pendingNotebookUpload);
       }
+      await refreshNotebookAuthStatus();
     } catch (error) {
       const retryErrorMessage =
         error instanceof Error
@@ -1544,6 +1566,15 @@ const NotebookLMView: React.FC = () => {
           </div>
         )}
 
+        <NotebookLmAuthBanner
+          status={notebookAuthStatus}
+          loading={loadingNotebookAuthStatus}
+          onOpenCookiesDialog={() => setActiveModule('02')}
+          onRefresh={() => {
+            void refreshNotebookAuthStatus();
+          }}
+        />
+
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
           <div className="space-y-4">
             {(activeModule === '02' || activeModule === '03') && (
@@ -1560,8 +1591,8 @@ const NotebookLMView: React.FC = () => {
                       Cookies de la cuenta del usuario
                     </h2>
                     <p className="mt-1 text-sm text-[#616f89]">
-                      Pega cookies de NotebookLM/Google, validalas y se guardaran solo en este
-                      navegador hasta que las reemplaces o las limpies.
+                      Pega cookies de NotebookLM/Google, validalas y se guardaran en tu cuenta
+                      MyMA para reutilizarlas hasta que las reemplaces o las elimines.
                     </p>
                   </div>
                 </div>
@@ -1609,13 +1640,13 @@ const NotebookLMView: React.FC = () => {
                 {notebookCookieValidation && (
                   <div
                     className={`mt-4 rounded-lg border p-4 text-sm ${
-                      hasValidNotebookCookieAuth
+                      hasLocalNotebookCookieAuth
                         ? 'border-teal-200 bg-teal-50 text-teal-800'
                         : 'border-amber-200 bg-amber-50 text-amber-800'
                     }`}
                   >
                     <p className="font-semibold">
-                      {hasValidNotebookCookieAuth
+                      {hasLocalNotebookCookieAuth
                         ? 'Cookies listas para usar'
                         : 'Cookies pendientes de correccion'}
                     </p>
@@ -1663,6 +1694,35 @@ const NotebookLMView: React.FC = () => {
                         <p className="font-semibold">Cookies obligatorias faltantes</p>
                         <p>{notebookCookieMissingRequired.join(', ')}</p>
                       </div>
+                    )}
+                  </div>
+                )}
+
+                {notebookAuthStatus?.has_credentials && (
+                  <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+                    <p className="font-semibold text-slate-900">Estado guardado en MyMA</p>
+                    <div className="mt-2 grid gap-3 md:grid-cols-2">
+                      <div>
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                          Estado
+                        </p>
+                        <p className="mt-1">{notebookAuthStatus.status || 'missing'}</p>
+                      </div>
+                      <div>
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                          Expiracion preventiva
+                        </p>
+                        <p className="mt-1">
+                          {typeof notebookAuthStatus.days_until_soft_expiry === 'number'
+                            ? `${notebookAuthStatus.days_until_soft_expiry} dia(s)`
+                            : 'Sin dato'}
+                        </p>
+                      </div>
+                    </div>
+                    {notebookAuthStatus.last_error && (
+                      <p className="mt-3 text-xs leading-5 text-slate-600">
+                        Ultimo error: {notebookAuthStatus.last_error}
+                      </p>
                     )}
                   </div>
                 )}

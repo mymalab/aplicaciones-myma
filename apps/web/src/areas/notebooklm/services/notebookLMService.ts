@@ -142,6 +142,20 @@ export interface NotebookLmCookieValidationResponse {
   auth_payload: NotebookLmAuthPayload | null;
 }
 
+export interface NotebookLmCredentialsStatusResponse {
+  has_credentials: boolean;
+  valid: boolean;
+  status: string;
+  validated_at: string | null;
+  last_checked_at: string | null;
+  last_used_at: string | null;
+  cookie_names: string[];
+  days_until_soft_expiry: number | null;
+  last_error: string;
+  failure_count: number;
+  keepalive_enabled: boolean;
+}
+
 interface NotebookChatResponse {
   answer?: string | null;
   conversation_id?: string | null;
@@ -212,6 +226,9 @@ const NOTEBOOK_LM_CHAT_API_BEARER_TOKEN = (
 ).trim();
 
 const NOTEBOOK_LM_AUTH_HEADER_NAME = 'X-NotebookLM-Auth';
+const NOTEBOOK_LM_USER_JWT_HEADER_NAME = 'X-Myma-User-JWT';
+const SESSION_INVALID_MESSAGE =
+  'Tu sesion expiro o ya no es valida. Recarga la pagina o vuelve a iniciar sesion.';
 
 export const NOTEBOOK_LM_CHAT_API_DOCS_URL = `${NOTEBOOK_LM_CHAT_API_BASE_URL}/docs`;
 
@@ -227,6 +244,8 @@ const getNotebookLmLocalApiBearerToken = () =>
 const getNotebookLmChatProxyBearerToken = () =>
   /^https?:\/\//i.test(NOTEBOOK_LM_PROXY_CHAT_BASE_URL) ? NOTEBOOK_LM_CHAT_API_BEARER_TOKEN : '';
 
+const isAbsoluteHttpUrl = (value: string) => /^https?:\/\//i.test(value);
+
 const normalizeString = (value: unknown): string =>
   typeof value === 'string' ? value.trim() : '';
 
@@ -235,6 +254,54 @@ const getResponseContentType = (response: Response) =>
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+
+export const getSupabaseAccessToken = async (forceRefresh = false): Promise<string> => {
+  if (forceRefresh) {
+    const {
+      data: { session },
+      error,
+    } = await supabase.auth.refreshSession();
+
+    if (error) {
+      throw new Error(error.message || SESSION_INVALID_MESSAGE);
+    }
+
+    const refreshedAccessToken = session?.access_token?.trim();
+    if (!refreshedAccessToken) {
+      throw new Error(SESSION_INVALID_MESSAGE);
+    }
+
+    return refreshedAccessToken;
+  }
+
+  const {
+    data: { session },
+    error,
+  } = await supabase.auth.getSession();
+
+  if (error) {
+    throw new Error(error.message || 'No fue posible validar la sesion actual.');
+  }
+
+  const accessToken = session?.access_token?.trim();
+  if (accessToken) {
+    return accessToken;
+  }
+
+  if (session?.refresh_token?.trim()) {
+    return getSupabaseAccessToken(true);
+  }
+
+  throw new Error(SESSION_INVALID_MESSAGE);
+};
+
+const tryGetSupabaseAccessToken = async (): Promise<string | null> => {
+  try {
+    return await getSupabaseAccessToken();
+  } catch {
+    return null;
+  }
+};
 
 const NETSCAPE_REQUIRED_COLUMNS = 7;
 
@@ -564,11 +631,22 @@ const buildNotebookLmRequestHeaders = (
   options?: {
     bearerToken?: string;
     authPayload?: NotebookLmAuthPayload | null;
+    userAccessToken?: string | null;
+    targetBaseUrl?: string;
   }
 ) => {
   const headers: Record<string, string> = {
     ...baseHeaders,
   };
+
+  const targetBaseUrl = options?.targetBaseUrl || '';
+  if (options?.userAccessToken) {
+    if (isAbsoluteHttpUrl(targetBaseUrl)) {
+      headers[NOTEBOOK_LM_USER_JWT_HEADER_NAME] = options.userAccessToken;
+    } else {
+      headers.Authorization = `Bearer ${options.userAccessToken}`;
+    }
+  }
 
   if (options?.bearerToken) {
     headers.Authorization = `Bearer ${options.bearerToken}`;
@@ -578,6 +656,84 @@ const buildNotebookLmRequestHeaders = (
     ...headers,
     ...buildNotebookLmAuthHeaders(options?.authPayload),
   };
+};
+
+const parseNotebookLmCredentialsStatusResponse = (
+  payload: unknown
+): NotebookLmCredentialsStatusResponse => {
+  if (!isRecord(payload)) {
+    throw new Error('La API no devolvio un JSON valido para el estado de credenciales.');
+  }
+
+  return {
+    has_credentials: Boolean(payload.has_credentials),
+    valid: Boolean(payload.valid),
+    status: normalizeString(payload.status) || 'missing',
+    validated_at: normalizeString(payload.validated_at) || null,
+    last_checked_at: normalizeString(payload.last_checked_at) || null,
+    last_used_at: normalizeString(payload.last_used_at) || null,
+    cookie_names: Array.isArray(payload.cookie_names)
+      ? payload.cookie_names.map(normalizeString).filter(Boolean)
+      : [],
+    days_until_soft_expiry:
+      typeof payload.days_until_soft_expiry === 'number' &&
+      Number.isFinite(payload.days_until_soft_expiry)
+        ? payload.days_until_soft_expiry
+        : null,
+    last_error: normalizeString(payload.last_error),
+    failure_count:
+      typeof payload.failure_count === 'number' && Number.isFinite(payload.failure_count)
+        ? payload.failure_count
+        : 0,
+    keepalive_enabled: Boolean(payload.keepalive_enabled),
+  };
+};
+
+const executeNotebookLmUserRequest = async (
+  endpoint: string,
+  options: RequestInit = {},
+  fallbackBearerToken = ''
+): Promise<Response> => {
+  let accessToken = await getSupabaseAccessToken();
+  const targetBaseUrl = endpoint.startsWith(NOTEBOOK_LM_LOCAL_API_BASE_URL)
+    ? NOTEBOOK_LM_LOCAL_API_BASE_URL
+    : endpoint.startsWith(NOTEBOOK_LM_PROXY_CHAT_BASE_URL)
+      ? NOTEBOOK_LM_PROXY_CHAT_BASE_URL
+      : endpoint.startsWith(NOTEBOOK_LM_CHAT_API_BASE_URL)
+        ? NOTEBOOK_LM_CHAT_API_BASE_URL
+        : '';
+
+  const doRequest = async (token: string) => {
+    const incomingHeaders =
+      options.headers instanceof Headers
+        ? Object.fromEntries(options.headers.entries())
+        : Array.isArray(options.headers)
+          ? Object.fromEntries(options.headers)
+          : (options.headers || {});
+
+    return fetch(endpoint, {
+      ...options,
+      headers: buildNotebookLmRequestHeaders(
+        {
+          ...incomingHeaders,
+        },
+        {
+          bearerToken: isAbsoluteHttpUrl(targetBaseUrl) ? fallbackBearerToken : '',
+          authPayload: undefined,
+          userAccessToken: token,
+          targetBaseUrl,
+        }
+      ),
+    });
+  };
+
+  let response = await doRequest(accessToken);
+  if (response.status === 401) {
+    accessToken = await getSupabaseAccessToken(true);
+    response = await doRequest(accessToken);
+  }
+
+  return response;
 };
 
 const mapNotebookLmItemsToOptions = (items: unknown): NotebookOption[] => {
@@ -622,6 +778,7 @@ export const validateNotebookLmCookies = async (
   }
 
   const endpoint = buildNotebookLmChatProxyUrl('/validate-cookies');
+  const userAccessToken = await tryGetSupabaseAccessToken();
 
   let response: Response;
   try {
@@ -632,7 +789,11 @@ export const validateNotebookLmCookies = async (
           'Content-Type': 'application/json',
         },
         {
-          bearerToken: getNotebookLmChatProxyBearerToken(),
+          bearerToken: isAbsoluteHttpUrl(NOTEBOOK_LM_PROXY_CHAT_BASE_URL)
+            ? getNotebookLmChatProxyBearerToken()
+            : '',
+          userAccessToken,
+          targetBaseUrl: NOTEBOOK_LM_PROXY_CHAT_BASE_URL,
         }
       ),
       body: JSON.stringify({
@@ -721,9 +882,12 @@ export const validateNotebookLmCookies = async (
 };
 
 export const fetchNotebookLmAccountNotebooks = async (
-  authPayload: NotebookLmAuthPayload
+  authPayload?: NotebookLmAuthPayload | null
 ): Promise<NotebookOption[]> => {
   const endpoint = buildNotebookLmChatProxyUrl('/notebooks');
+  const userAccessToken = authPayload
+    ? await tryGetSupabaseAccessToken()
+    : await getSupabaseAccessToken();
 
   let response: Response;
   try {
@@ -734,8 +898,12 @@ export const fetchNotebookLmAccountNotebooks = async (
           Accept: 'application/json',
         },
         {
-          bearerToken: getNotebookLmChatProxyBearerToken(),
+          bearerToken: isAbsoluteHttpUrl(NOTEBOOK_LM_PROXY_CHAT_BASE_URL)
+            ? getNotebookLmChatProxyBearerToken()
+            : '',
           authPayload,
+          userAccessToken,
+          targetBaseUrl: NOTEBOOK_LM_PROXY_CHAT_BASE_URL,
         }
       ),
     });
@@ -772,6 +940,77 @@ export const fetchNotebookLmAccountNotebooks = async (
   }
 
   return mapNotebookLmItemsToOptions(parsedBody.items);
+};
+
+export const storeNotebookLmCredentials = async (
+  cookiesText: string
+): Promise<NotebookLmCredentialsStatusResponse> => {
+  const normalizedCookiesText = normalizeCookiesInputForValidation(cookiesText);
+  if (!normalizedCookiesText) {
+    throw new Error('Pega cookies antes de guardarlas.');
+  }
+
+  const endpoint = buildNotebookLmLocalApiUrl('/credentials');
+  const response = await executeNotebookLmUserRequest(
+    endpoint,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        cookies_text: normalizedCookiesText,
+      }),
+    },
+    getNotebookLmLocalApiBearerToken()
+  );
+
+  if (!response.ok) {
+    const apiMessage = await readApiErrorMessage(response);
+    throw new Error(`Error guardando credenciales NotebookLM: ${apiMessage}`);
+  }
+
+  return parseNotebookLmCredentialsStatusResponse(await response.json());
+};
+
+export const fetchNotebookLmCredentialsStatus = async (): Promise<NotebookLmCredentialsStatusResponse> => {
+  const endpoint = buildNotebookLmLocalApiUrl('/credentials/status');
+  const response = await executeNotebookLmUserRequest(
+    endpoint,
+    {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+      },
+    },
+    getNotebookLmLocalApiBearerToken()
+  );
+
+  if (!response.ok) {
+    const apiMessage = await readApiErrorMessage(response);
+    throw new Error(`Error consultando credenciales NotebookLM: ${apiMessage}`);
+  }
+
+  return parseNotebookLmCredentialsStatusResponse(await response.json());
+};
+
+export const deleteNotebookLmCredentials = async (): Promise<void> => {
+  const endpoint = buildNotebookLmLocalApiUrl('/credentials');
+  const response = await executeNotebookLmUserRequest(
+    endpoint,
+    {
+      method: 'DELETE',
+      headers: {
+        Accept: 'application/json',
+      },
+    },
+    getNotebookLmLocalApiBearerToken()
+  );
+
+  if (!response.ok) {
+    const apiMessage = await readApiErrorMessage(response);
+    throw new Error(`Error eliminando credenciales NotebookLM: ${apiMessage}`);
+  }
 };
 
 export const fetchNotebookOptions = async (): Promise<NotebookOption[]> => {
@@ -1008,6 +1247,9 @@ export const createAndLoadNotebookFiltered = async (
   }
 
   const endpoint = buildNotebookLmLocalApiUrl('/crear-y-cargar-notebook-filtrado');
+  const userAccessToken = authPayload
+    ? await tryGetSupabaseAccessToken()
+    : await getSupabaseAccessToken();
 
   let response: Response;
   try {
@@ -1018,8 +1260,12 @@ export const createAndLoadNotebookFiltered = async (
           'Content-Type': 'application/json',
         },
         {
-          bearerToken: getNotebookLmLocalApiBearerToken(),
+          bearerToken: isAbsoluteHttpUrl(NOTEBOOK_LM_LOCAL_API_BASE_URL)
+            ? getNotebookLmLocalApiBearerToken()
+            : '',
           authPayload,
+          userAccessToken,
+          targetBaseUrl: NOTEBOOK_LM_LOCAL_API_BASE_URL,
         }
       ),
       body: JSON.stringify(normalizedPayload),
@@ -1075,6 +1321,9 @@ export const retryNotebookUpload = async (
   }
 
   const endpoint = buildNotebookLmLocalApiUrl('/reintentar-carga-notebook');
+  const userAccessToken = authPayload
+    ? await tryGetSupabaseAccessToken()
+    : await getSupabaseAccessToken();
 
   let response: Response;
   try {
@@ -1085,8 +1334,12 @@ export const retryNotebookUpload = async (
           'Content-Type': 'application/json',
         },
         {
-          bearerToken: getNotebookLmLocalApiBearerToken(),
+          bearerToken: isAbsoluteHttpUrl(NOTEBOOK_LM_LOCAL_API_BASE_URL)
+            ? getNotebookLmLocalApiBearerToken()
+            : '',
           authPayload,
+          userAccessToken,
+          targetBaseUrl: NOTEBOOK_LM_LOCAL_API_BASE_URL,
         }
       ),
       body: JSON.stringify(normalizedPayload),
@@ -1317,6 +1570,9 @@ export const shareNotebookWithUser = async (
     `/notebooks/${encodeURIComponent(normalizedNotebookId)}/share/users`
   );
   const localApiBearerToken = getNotebookLmLocalApiBearerToken();
+  const userAccessToken = authPayload
+    ? await tryGetSupabaseAccessToken()
+    : await getSupabaseAccessToken();
 
   let response: Response;
   try {
@@ -1327,8 +1583,12 @@ export const shareNotebookWithUser = async (
           'Content-Type': 'application/json',
         },
         {
-          bearerToken: localApiBearerToken,
+          bearerToken: isAbsoluteHttpUrl(NOTEBOOK_LM_LOCAL_API_BASE_URL)
+            ? localApiBearerToken
+            : '',
           authPayload,
+          userAccessToken,
+          targetBaseUrl: NOTEBOOK_LM_LOCAL_API_BASE_URL,
         }
       ),
       body: JSON.stringify({

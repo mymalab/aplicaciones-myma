@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import {
+  fetchNotebookLmCredentialsStatus,
   fetchNotebookLmAccountNotebooks,
+  storeNotebookLmCredentials,
   validateNotebookLmCookies,
 } from '../services/notebookLMService';
 import type {
@@ -59,13 +61,25 @@ const NotebookLmCookiesDialog: React.FC<NotebookLmCookiesDialogProps> = ({
     const storedSelection = readStoredSelectedNotebook();
     setSelectedNotebookId(storedSelection?.id || '');
 
-    if (storedPayload) {
-      void loadNotebooks(storedPayload);
-    }
+    void (async () => {
+      if (storedPayload) {
+        await loadNotebooks(storedPayload);
+        return;
+      }
+
+      try {
+        const status = await fetchNotebookLmCredentialsStatus();
+        if (status.valid) {
+          await loadNotebooks(null);
+        }
+      } catch {
+        // No interrumpimos la UI si no hay credenciales server-side o si la sesion expiro.
+      }
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  const loadNotebooks = async (payload: NotebookLmAuthPayload) => {
+  const loadNotebooks = async (payload?: NotebookLmAuthPayload | null) => {
     setLoadingNotebooks(true);
     setNotebooksError('');
     try {
@@ -105,6 +119,15 @@ const NotebookLmCookiesDialog: React.FC<NotebookLmCookiesDialogProps> = ({
         writeStoredNotebookLmAuthPayload(response.auth_payload);
         setActiveAuthPayload(response.auth_payload);
         onValidated?.(response.auth_payload);
+        try {
+          await storeNotebookLmCredentials(raw);
+        } catch (storeError) {
+          const storeMessage =
+            storeError instanceof Error
+              ? storeError.message
+              : 'Las cookies se validaron, pero no pudimos guardarlas en tu cuenta.';
+          setErrorMessage(storeMessage);
+        }
         await loadNotebooks(response.auth_payload);
       } else {
         writeStoredNotebookLmAuthPayload(null);
@@ -140,7 +163,7 @@ const NotebookLmCookiesDialog: React.FC<NotebookLmCookiesDialogProps> = ({
     result?.ok && result.token_fetch_ok && result.auth_payload
   );
 
-  const showNotebookPicker = Boolean(activeAuthPayload);
+  const showNotebookPicker = Boolean(activeAuthPayload || notebooks.length > 0 || loadingNotebooks);
   const selectedNotebook = notebooks.find((item) => item.id === selectedNotebookId) || null;
   const selectedNotebookUrl = selectedNotebook
     ? `https://notebooklm.google.com/notebook/${encodeURIComponent(selectedNotebook.notebook_id)}`
@@ -175,8 +198,8 @@ const NotebookLmCookiesDialog: React.FC<NotebookLmCookiesDialogProps> = ({
           </button>
         </div>
         <p className="mb-3 text-sm text-gray-600">
-          Pega cookies en formato Netscape o storage JSON de Playwright. Se guardan solo en
-          este navegador y se usaran para todas las llamadas a la API de NotebookLM.
+          Pega cookies en formato Netscape o storage JSON de Playwright. Se validan y se
+          guardan en tu cuenta MyMA para reutilizarlas en NotebookLM.
         </p>
         <textarea
           value={input}
@@ -237,7 +260,7 @@ const NotebookLmCookiesDialog: React.FC<NotebookLmCookiesDialogProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  if (activeAuthPayload) void loadNotebooks(activeAuthPayload);
+                  void loadNotebooks(activeAuthPayload || null);
                 }}
                 disabled={loadingNotebooks}
                 className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs font-medium text-[#111318] hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60"
