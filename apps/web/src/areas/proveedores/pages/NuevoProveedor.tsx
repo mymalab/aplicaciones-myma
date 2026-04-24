@@ -180,6 +180,8 @@ const NuevoProveedor: React.FC = () => {
     pagina_web: '',
     competencia_directa: false,
     habilitado: false,
+    acuerdo_confidencialidad_NDA: false,
+    ETFA: false,
     evaluacion: null,
     clasificacion: null,
   });
@@ -209,6 +211,8 @@ const NuevoProveedor: React.FC = () => {
   }, [formData.evaluacion, formData.clasificacion]);
 
   const competenciaDirectaActiva = formData.competencia_directa === true;
+  const ndaActivo = formData.acuerdo_confidencialidad_NDA === true;
+  const etfaActiva = formData.ETFA === true;
 
   const especialidadesSeleccionadasDetalle = useMemo(() => {
     const selectedIds = new Set(especialidadesSeleccionadas);
@@ -271,6 +275,8 @@ const NuevoProveedor: React.FC = () => {
           pagina_web: proveedor.pagina_web || '',
           competencia_directa: toBoolean(proveedor.competencia_directa),
           habilitado: toBoolean(proveedor.competencia_directa) ? false : toBoolean(proveedor.habilitado),
+          acuerdo_confidencialidad_NDA: toBoolean(proveedor.acuerdo_confidencialidad_NDA),
+          ETFA: toBoolean(proveedor.ETFA),
           evaluacion: evaluacionValue,
           clasificacion: clasificacionValue,
         });
@@ -521,6 +527,8 @@ const NuevoProveedor: React.FC = () => {
 
       const competenciaDirecta = formData.competencia_directa === true;
       const habilitado = competenciaDirecta ? false : formData.habilitado === true;
+      const acuerdoConfidencialidadNDA = formData.acuerdo_confidencialidad_NDA === true;
+      const etfa = formData.ETFA === true;
 
       const dataToSend: ProveedorData = {
         nombre_proveedor: formData.nombre_proveedor.trim(),
@@ -531,6 +539,8 @@ const NuevoProveedor: React.FC = () => {
         pagina_web: formData.pagina_web?.trim() || null,
         competencia_directa: competenciaDirecta,
         habilitado,
+        acuerdo_confidencialidad_NDA: acuerdoConfidencialidadNDA,
+        ETFA: etfa,
         direccion:
           hasAnyValue(direccionSucursal) || hasAnyValue(direccionCasaMatriz)
             ? direccionPayload
@@ -800,6 +810,78 @@ const NuevoProveedor: React.FC = () => {
                         Se desactiva automaticamente mientras el proveedor sea competencia directa.
                       </p>
                     )}
+                  </div>
+                </label>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <label
+                  htmlFor="acuerdo_confidencialidad_NDA"
+                  className={`flex items-start gap-3 rounded-xl border px-4 py-4 transition-all cursor-pointer ${
+                    ndaActivo
+                      ? 'border-blue-300 bg-blue-50'
+                      : 'border-gray-200 bg-white hover:border-gray-300'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    id="acuerdo_confidencialidad_NDA"
+                    name="acuerdo_confidencialidad_NDA"
+                    checked={ndaActivo}
+                    onChange={handleChange}
+                    className="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold text-[#111318]">NDA</span>
+                      <span
+                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                          ndaActivo
+                            ? 'bg-blue-100 text-blue-700'
+                            : 'bg-slate-100 text-slate-600'
+                        }`}
+                      >
+                        {ndaActivo ? 'Si' : 'No'}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-600">
+                      Indica si el proveedor cuenta con acuerdo de confidencialidad firmado.
+                    </p>
+                  </div>
+                </label>
+
+                <label
+                  htmlFor="ETFA"
+                  className={`flex items-start gap-3 rounded-xl border px-4 py-4 transition-all cursor-pointer ${
+                    etfaActiva
+                      ? 'border-cyan-300 bg-cyan-50'
+                      : 'border-gray-200 bg-white hover:border-gray-300'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    id="ETFA"
+                    name="ETFA"
+                    checked={etfaActiva}
+                    onChange={handleChange}
+                    className="mt-1 h-4 w-4 rounded border-gray-300 text-cyan-600 focus:ring-cyan-500"
+                  />
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold text-[#111318]">ETFA</span>
+                      <span
+                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                          etfaActiva
+                            ? 'bg-cyan-100 text-cyan-700'
+                            : 'bg-slate-100 text-slate-600'
+                        }`}
+                      >
+                        {etfaActiva ? 'Si' : 'No'}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-600">
+                      Indica si el proveedor cuenta con registro ETFA.
+                    </p>
                   </div>
                 </label>
               </div>

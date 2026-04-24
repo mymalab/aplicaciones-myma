@@ -14,6 +14,8 @@ export interface ProveedorData {
   informacion_contacto?: ProveedorJsonb;
   competencia_directa?: boolean | null;
   habilitado?: boolean | null;
+  acuerdo_confidencialidad_NDA?: boolean | null;
+  ETFA?: boolean | null;
   evaluacion?: number | null;
   clasificacion?: string | null;
 }
@@ -30,6 +32,8 @@ export interface ProveedorResponse {
   informacion_contacto?: ProveedorJsonb;
   competencia_directa?: boolean | null;
   habilitado?: boolean | null;
+  acuerdo_confidencialidad_NDA?: boolean | null;
+  ETFA?: boolean | null;
   evaluacion?: number | null;
   clasificacion?: string | null;
   categoria_proveedor?: string | null;

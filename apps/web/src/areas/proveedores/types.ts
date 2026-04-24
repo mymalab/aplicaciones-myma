@@ -41,6 +41,8 @@ export interface Proveedor {
   activo: boolean;
   competencia_directa?: boolean | null;
   habilitado?: boolean | null;
+  acuerdo_confidencialidad_NDA?: boolean | null;
+  ETFA?: boolean | null;
   tieneServiciosEjecutados?: boolean; // Indica si el proveedor tiene servicios ejecutados
   cantidad_a?: number; // Cantidad de evaluaciones con clasificación A
   cantidad_b?: number; // Cantidad de evaluaciones con clasificación B
@@ -104,4 +106,3 @@ export interface ProveedorPotencial {
   created_at?: string;
   updated_at?: string;
 }
-

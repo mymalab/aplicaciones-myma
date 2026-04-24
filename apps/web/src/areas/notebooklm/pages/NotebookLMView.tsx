@@ -82,9 +82,12 @@ const DEFAULT_KEYWORDS = [
   'planos',
   'lamina',
   'laminas',
+  'anexo',
   'apendices',
   'apendice',
+  'ci',
   'foto',
+  'dwg',
 ];
 
 const HIDDEN_DOM_TABLE_COLUMNS = new Set([

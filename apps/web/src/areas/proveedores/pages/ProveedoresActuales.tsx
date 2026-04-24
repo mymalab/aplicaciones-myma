@@ -335,6 +335,8 @@ const ProveedoresActuales: React.FC = () => {
       activo: true,
       competencia_directa: toNullableBoolean(response.competencia_directa),
       habilitado: toNullableBoolean(response.habilitado),
+      acuerdo_confidencialidad_NDA: toNullableBoolean(response.acuerdo_confidencialidad_NDA),
+      ETFA: toNullableBoolean(response.ETFA),
       tieneServiciosEjecutados,
       cantidad_a: response.cantidad_a ?? 0,
       cantidad_b: response.cantidad_b ?? 0,
@@ -795,6 +797,8 @@ const ProveedoresActuales: React.FC = () => {
                       COMPETENCIA DIRECTA
                     </th>
                     <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700">HABILITADO</th>
+                    <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700">NDA</th>
+                    <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700">ETFA</th>
                     <th
                       className="text-left py-4 px-6 text-sm font-semibold text-gray-700 cursor-help"
                       title="Promedio de las evaluaciones anteriores de los servicios que el proveedor ha entregado a Myma (0% a 100%). Rangos: >76.4% = A, 50%-76.4% = B, <50% = C."
@@ -941,6 +945,18 @@ const ProveedoresActuales: React.FC = () => {
                         {renderBooleanBadge(proveedor.habilitado, {
                           trueClassName: 'bg-green-100 text-green-700 border-green-200',
                           falseClassName: 'bg-red-100 text-red-700 border-red-200',
+                        })}
+                      </td>
+                      <td className="py-4 px-6">
+                        {renderBooleanBadge(proveedor.acuerdo_confidencialidad_NDA, {
+                          trueClassName: 'bg-blue-100 text-blue-700 border-blue-200',
+                          falseClassName: 'bg-slate-100 text-slate-700 border-slate-200',
+                        })}
+                      </td>
+                      <td className="py-4 px-6">
+                        {renderBooleanBadge(proveedor.ETFA, {
+                          trueClassName: 'bg-cyan-100 text-cyan-700 border-cyan-200',
+                          falseClassName: 'bg-slate-100 text-slate-700 border-slate-200',
                         })}
                       </td>
                       <td className="py-4 px-6">
