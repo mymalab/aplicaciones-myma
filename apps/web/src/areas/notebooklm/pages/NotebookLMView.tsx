@@ -489,7 +489,12 @@ const NotebookLMView: React.FC = () => {
     Boolean(notebookCookieAuth) &&
     Boolean(notebookCookieValidation?.ok) &&
     Boolean(notebookCookieValidation?.token_fetch_ok);
-  const hasValidNotebookCookieAuth = hasLocalNotebookCookieAuth || Boolean(notebookAuthStatus?.valid);
+  const hasStoredNotebookCookieAuth = Boolean(notebookAuthStatus?.valid);
+  const hasValidNotebookCookieAuth = hasLocalNotebookCookieAuth || hasStoredNotebookCookieAuth;
+  const notebookCookieStatusMessage =
+    hasStoredNotebookCookieAuth && !hasLocalNotebookCookieAuth
+      ? 'Cookies guardadas en MyMA listas para usar. La app esta consultando el estado guardado y no necesitas volver a pegarlas.'
+      : notebookCookieValidation?.message || '';
   const notebookCookieDomains = notebookCookieValidation?.cookie_domains || [];
   const notebookCookieNames = notebookCookieValidation?.selected_cookie_names || [];
   const notebookCookieMissingRequired =
@@ -1643,17 +1648,17 @@ const NotebookLMView: React.FC = () => {
                 {notebookCookieValidation && (
                   <div
                     className={`mt-4 rounded-lg border p-4 text-sm ${
-                      hasLocalNotebookCookieAuth
+                      hasValidNotebookCookieAuth
                         ? 'border-teal-200 bg-teal-50 text-teal-800'
                         : 'border-amber-200 bg-amber-50 text-amber-800'
                     }`}
                   >
                     <p className="font-semibold">
-                      {hasLocalNotebookCookieAuth
+                      {hasValidNotebookCookieAuth
                         ? 'Cookies listas para usar'
                         : 'Cookies pendientes de correccion'}
                     </p>
-                    <p className="mt-1 leading-6">{notebookCookieValidation.message}</p>
+                    <p className="mt-1 leading-6">{notebookCookieStatusMessage}</p>
                     <div className="mt-3 grid gap-3 md:grid-cols-2">
                       <div>
                         <p className="text-[11px] font-semibold uppercase tracking-wide">
@@ -1668,7 +1673,11 @@ const NotebookLMView: React.FC = () => {
                           Estado auth/token
                         </p>
                         <p className="mt-1">
-                          {notebookCookieValidation.token_fetch_ok ? 'Valido' : 'No valido'}
+                          {hasStoredNotebookCookieAuth
+                            ? 'Valido guardado en MyMA'
+                            : notebookCookieValidation.token_fetch_ok
+                              ? 'Valido'
+                              : 'No valido'}
                         </p>
                       </div>
                       <div>

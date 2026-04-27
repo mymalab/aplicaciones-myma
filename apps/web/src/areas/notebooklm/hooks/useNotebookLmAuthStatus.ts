@@ -4,7 +4,7 @@ import {
   type NotebookLmCredentialsStatusResponse,
 } from '../services/notebookLMService';
 
-const NOTEBOOK_AUTH_STATUS_POLL_MS = 5 * 60 * 1000;
+const NOTEBOOK_AUTH_STATUS_POLL_MS = 60 * 1000;
 
 const EMPTY_STATUS: NotebookLmCredentialsStatusResponse = {
   has_credentials: false,
@@ -73,10 +73,23 @@ export const useNotebookLmAuthStatus = (enabled = true) => {
     const intervalId = window.setInterval(() => {
       void refresh();
     }, NOTEBOOK_AUTH_STATUS_POLL_MS);
+    const handleFocus = () => {
+      void refresh();
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void refresh();
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       cancelled = true;
       window.clearInterval(intervalId);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [enabled]);
 
