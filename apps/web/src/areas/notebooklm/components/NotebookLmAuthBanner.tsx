@@ -60,7 +60,7 @@ const NotebookLmAuthBanner: React.FC<NotebookLmAuthBannerProps> = ({
               className="inline-flex items-center gap-2 rounded-lg border border-current/20 bg-white/70 px-3 py-2 text-sm font-semibold transition hover:bg-white"
             >
               <span className="material-symbols-outlined text-base leading-none">refresh</span>
-              Actualizar
+              Revisar ahora
             </button>
           )}
           {onOpenCookiesDialog && (

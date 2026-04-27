@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   fetchNotebookLmCredentialsStatus,
+  revalidateNotebookLmCredentials,
   type NotebookLmCredentialsStatusResponse,
 } from '../services/notebookLMService';
 
@@ -52,6 +53,32 @@ export const useNotebookLmAuthStatus = (enabled = true) => {
     }
   };
 
+  const revalidate = async () => {
+    if (!enabled) {
+      setStatus(EMPTY_STATUS);
+      setLoading(false);
+      setError('');
+      return EMPTY_STATUS;
+    }
+
+    setLoading(true);
+    try {
+      const nextStatus = await revalidateNotebookLmCredentials();
+      setStatus(nextStatus);
+      setError('');
+      return nextStatus;
+    } catch (fetchError) {
+      const message =
+        fetchError instanceof Error
+          ? fetchError.message
+          : 'No pudimos revalidar las credenciales de NotebookLM.';
+      setError(message);
+      return status;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (!enabled) {
       setStatus(EMPTY_STATUS);
@@ -98,5 +125,6 @@ export const useNotebookLmAuthStatus = (enabled = true) => {
     loading,
     error,
     refresh,
+    revalidate,
   };
 };

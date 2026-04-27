@@ -688,6 +688,16 @@ app.get('/api/notebooklm/local/credentials/status', async (req, res) => {
   });
 });
 
+app.post('/api/notebooklm/local/credentials/revalidate', async (req, res) => {
+  await proxyAdendasRequest(req, res, {
+    apiBaseUrl: NOTEBOOK_LM_LOCAL_API_BASE_URL,
+    bearerToken: NOTEBOOK_LM_LOCAL_API_BEARER_TOKEN,
+    forwardUserJwtFromAuthorization: true,
+    upstreamPath: '/api/v1/adenda/notebook/credentials/revalidate',
+    method: 'POST',
+  });
+});
+
 app.delete('/api/notebooklm/local/credentials', async (req, res) => {
   await proxyAdendasRequest(req, res, {
     apiBaseUrl: NOTEBOOK_LM_LOCAL_API_BASE_URL,

@@ -1013,6 +1013,27 @@ export const fetchNotebookLmCredentialsStatus = async (): Promise<NotebookLmCred
   return parseNotebookLmCredentialsStatusResponse(await response.json());
 };
 
+export const revalidateNotebookLmCredentials = async (): Promise<NotebookLmCredentialsStatusResponse> => {
+  const endpoint = buildNotebookLmLocalApiUrl('/credentials/revalidate');
+  const response = await executeNotebookLmUserRequest(
+    endpoint,
+    {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+      },
+    },
+    getNotebookLmLocalApiBearerToken()
+  );
+
+  if (!response.ok) {
+    const apiMessage = await readApiErrorMessage(response);
+    throw new Error(`Error revalidando credenciales NotebookLM: ${apiMessage}`);
+  }
+
+  return parseNotebookLmCredentialsStatusResponse(await response.json());
+};
+
 export const deleteNotebookLmCredentials = async (): Promise<void> => {
   const endpoint = buildNotebookLmLocalApiUrl('/credentials');
   const response = await executeNotebookLmUserRequest(

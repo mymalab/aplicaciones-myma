@@ -313,6 +313,7 @@ const NotebookLMView: React.FC = () => {
     status: notebookAuthStatus,
     loading: loadingNotebookAuthStatus,
     refresh: refreshNotebookAuthStatus,
+    revalidate: revalidateNotebookAuthStatus,
   } = useNotebookLmAuthStatus(true);
   const [activeModule, setActiveModule] = useState<NotebookModuleStep>('01');
   const [documentUrl, setDocumentUrl] = useState('');
@@ -1579,7 +1580,7 @@ const NotebookLMView: React.FC = () => {
           loading={loadingNotebookAuthStatus}
           onOpenCookiesDialog={() => setActiveModule('02')}
           onRefresh={() => {
-            void refreshNotebookAuthStatus();
+            void revalidateNotebookAuthStatus();
           }}
         />
 
@@ -1712,7 +1713,22 @@ const NotebookLMView: React.FC = () => {
 
                 {notebookAuthStatus?.has_credentials && (
                   <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
-                    <p className="font-semibold text-slate-900">Estado guardado en MyMA</p>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <p className="font-semibold text-slate-900">Estado guardado en MyMA</p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void revalidateNotebookAuthStatus();
+                        }}
+                        disabled={loadingNotebookAuthStatus}
+                        className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        <span className="material-symbols-outlined text-base">
+                          {loadingNotebookAuthStatus ? 'progress_activity' : 'refresh'}
+                        </span>
+                        {loadingNotebookAuthStatus ? 'Revisando...' : 'Revisar ahora'}
+                      </button>
+                    </div>
                     <div className="mt-2 grid gap-3 md:grid-cols-2">
                       <div>
                         <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
