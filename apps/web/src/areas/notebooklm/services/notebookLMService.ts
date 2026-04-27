@@ -304,6 +304,7 @@ const tryGetSupabaseAccessToken = async (): Promise<string | null> => {
 };
 
 const NETSCAPE_REQUIRED_COLUMNS = 7;
+const NETSCAPE_HTTP_ONLY_PREFIX = '#HttpOnly_';
 
 interface PlaywrightCookie {
   name: string;
@@ -323,6 +324,27 @@ const splitNetscapeLine = (line: string): string[] => {
   return line.split(/\s+/);
 };
 
+const getNetscapeCookieDataLine = (
+  rawLine: string
+): { line: string; httpOnly: boolean } | null => {
+  const trimmed = rawLine.trim();
+  if (!trimmed) return null;
+
+  if (trimmed.startsWith(NETSCAPE_HTTP_ONLY_PREFIX)) {
+    return {
+      line: trimmed.slice(NETSCAPE_HTTP_ONLY_PREFIX.length),
+      httpOnly: true,
+    };
+  }
+
+  if (trimmed.startsWith('#')) return null;
+
+  return {
+    line: trimmed,
+    httpOnly: false,
+  };
+};
+
 export const convertNetscapeCookiesToStorageStateJson = (
   rawText: string
 ): string | null => {
@@ -330,12 +352,10 @@ export const convertNetscapeCookiesToStorageStateJson = (
   const cookies: PlaywrightCookie[] = [];
 
   for (const rawLine of rawText.split(/\r?\n/)) {
-    const trimmed = rawLine.trim();
-    if (!trimmed || trimmed.startsWith('#')) continue;
+    const cookieDataLine = getNetscapeCookieDataLine(rawLine);
+    if (!cookieDataLine) continue;
 
-    const parts = splitNetscapeLine(rawLine.replace(/^#HttpOnly_/, '')).filter(
-      (part) => part !== undefined
-    );
+    const parts = splitNetscapeLine(cookieDataLine.line).filter((part) => part !== undefined);
     if (parts.length < NETSCAPE_REQUIRED_COLUMNS) continue;
 
     const [domainRaw, _includeSub, pathRaw, secureRaw, expiresRaw, nameRaw, ...valueParts] =
@@ -350,7 +370,6 @@ export const convertNetscapeCookiesToStorageStateJson = (
 
     const expiresNumber = Number((expiresRaw || '').trim());
     const secureFlag = (secureRaw || '').trim().toUpperCase() === 'TRUE';
-    const httpOnlyHint = rawLine.trim().startsWith('#HttpOnly_');
 
     cookies.push({
       name,
@@ -358,7 +377,7 @@ export const convertNetscapeCookiesToStorageStateJson = (
       domain,
       path: (pathRaw || '').trim() || '/',
       expires: Number.isFinite(expiresNumber) && expiresNumber > 0 ? expiresNumber : -1,
-      httpOnly: httpOnlyHint,
+      httpOnly: cookieDataLine.httpOnly,
       secure: secureFlag,
       sameSite: secureFlag ? 'None' : 'Lax',
     });
@@ -383,9 +402,9 @@ const looksLikeStorageStateJson = (text: string): boolean => {
 const looksLikeNetscapeCookieText = (text: string): boolean => {
   if (!text) return false;
   for (const line of text.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) continue;
-    const parts = splitNetscapeLine(line);
+    const cookieDataLine = getNetscapeCookieDataLine(line);
+    if (!cookieDataLine) continue;
+    const parts = splitNetscapeLine(cookieDataLine.line);
     if (parts.length >= NETSCAPE_REQUIRED_COLUMNS) return true;
   }
   return false;
