@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from 'recharts';
 import { AreaId } from '@contracts/areas';
 import { fetchProveedores, ProveedorResponse, fetchEspecialidadesPriorizadasByRuts, fetchEspecialidades } from '../services/proveedoresService';
-import { Proveedor, Clasificacion, TipoProveedor } from '../types';
+import { Proveedor, Clasificacion, normalizeTipoProveedor } from '../types';
 import ServiciosEvaluados from './ServiciosEvaluados';
 import { normalizeSearchText } from '../utils/search';
 
@@ -31,7 +31,7 @@ const Dashboard: React.FC = () => {
     response: ProveedorResponse,
     especialidadesPorRut: Record<string, string[]>
   ): Proveedor => {
-    const tipo = response.tipo_proveedor === 'Persona natural' ? TipoProveedor.PERSONA : TipoProveedor.EMPRESA;
+    const tipo = normalizeTipoProveedor(response.tipo_proveedor);
     
     // Usar categoria_proveedor directamente de la base de datos
     let clasificacion: Clasificacion = Clasificacion.A;

@@ -1,6 +1,13 @@
 ﻿import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { Proveedor, TipoProveedor, Especialidad, Clasificacion } from '../types';
+import {
+  Proveedor,
+  TipoProveedor,
+  Especialidad,
+  Clasificacion,
+  TIPO_PROVEEDOR_OPTIONS,
+  normalizeTipoProveedor,
+} from '../types';
 import { AreaId } from '@contracts/areas';
 import {
   fetchProveedores,
@@ -33,6 +40,8 @@ interface ProveedorConContacto extends Proveedor {
   informacionContacto: InformacionContactoProveedor;
   ultimaActualizacion: string | null;
 }
+
+type FiltroHabilitado = 'habilitados' | 'inhabilitados';
 
 const toPlainObject = (value: unknown): Record<string, unknown> => {
   if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
@@ -195,6 +204,7 @@ const ProveedoresActuales: React.FC = () => {
   const [filterTipo, setFilterTipo] = useState<string>('Todos');
   const [filterEspecialidad, setFilterEspecialidad] = useState<string>('Todas');
   const [filterClasificacion, setFilterClasificacion] = useState<string>('Todas');
+  const [filterHabilitado, setFilterHabilitado] = useState<FiltroHabilitado>('habilitados');
   const [categorias, setCategorias] = useState<{ id: number; nombre: string }[]>([]);
   const [loadingCategorias, setLoadingCategorias] = useState(true);
   const [contactoDetalleProveedor, setContactoDetalleProveedor] = useState<ProveedorConContacto | null>(null);
@@ -218,11 +228,7 @@ const ProveedoresActuales: React.FC = () => {
     especialidadesPorRut: Record<string, string[]>,
     ultimaActualizacionServiciosPorRut: Record<string, string | null>
   ): ProveedorConContacto => {
-    // Mapear tipo_proveedor a TipoProveedor enum
-    let tipo: TipoProveedor = TipoProveedor.EMPRESA;
-    if (response.tipo_proveedor === 'Persona natural') {
-      tipo = TipoProveedor.PERSONA;
-    }
+    const tipo = normalizeTipoProveedor(response.tipo_proveedor);
 
     // Usar categoria_proveedor directamente de la base de datos
     // Mapear categoria_proveedor string a Clasificacion enum
@@ -505,8 +511,12 @@ const ProveedoresActuales: React.FC = () => {
     const matchesTipo = filterTipo === 'Todos' || proveedor.tipo === filterTipo;
     const matchesEspecialidad = filterEspecialidad === 'Todas' || proveedor.especialidad.includes(filterEspecialidad);
     const matchesClasificacion = filterClasificacion === 'Todas' || proveedor.clasificacion === filterClasificacion;
+    const matchesHabilitado =
+      filterHabilitado === 'habilitados'
+        ? proveedor.habilitado === true
+        : proveedor.habilitado === false;
 
-    return matchesSearch && matchesTipo && matchesEspecialidad && matchesClasificacion;
+    return matchesSearch && matchesTipo && matchesEspecialidad && matchesClasificacion && matchesHabilitado;
   });
 
   // PaginaciAn
@@ -653,6 +663,39 @@ const ProveedoresActuales: React.FC = () => {
               </button>
             </div>
           </div>
+
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setFilterHabilitado('habilitados');
+                setCurrentPage(1);
+              }}
+              className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold border transition-colors ${
+                filterHabilitado === 'habilitados'
+                  ? 'bg-green-600 text-white border-green-600'
+                  : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
+              }`}
+            >
+              <span className="material-symbols-outlined text-base">verified_user</span>
+              <span>Proveedores habilitados</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setFilterHabilitado('inhabilitados');
+                setCurrentPage(1);
+              }}
+              className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold border transition-colors ${
+                filterHabilitado === 'inhabilitados'
+                  ? 'bg-green-600 text-white border-green-600'
+                  : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
+              }`}
+            >
+              <span className="material-symbols-outlined text-base">block</span>
+              <span>Proveedores inhabilitados</span>
+            </button>
+          </div>
         </div>
 
         {/* Filtros */}
@@ -688,8 +731,11 @@ const ProveedoresActuales: React.FC = () => {
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition-all bg-white"
               >
                 <option value="Todos">Todos los tipos</option>
-                <option value={TipoProveedor.EMPRESA}>Empresa</option>
-                <option value={TipoProveedor.PERSONA}>Persona</option>
+                {TIPO_PROVEEDOR_OPTIONS.map((tipoProveedor) => (
+                  <option key={tipoProveedor} value={tipoProveedor}>
+                    {tipoProveedor}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -780,7 +826,9 @@ const ProveedoresActuales: React.FC = () => {
                     <th className="sticky left-0 z-20 text-left py-4 px-6 text-sm font-semibold text-gray-700 bg-gradient-to-r from-gray-50 to-blue-50">
                       NOMBRE / RAZON SOCIAL
                     </th>
-                    <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700">RUT / TIPO</th>
+                    <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700 whitespace-nowrap">
+                      TIPO PROVEEDOR
+                    </th>
                     <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700">ESPECIALIDAD</th>
                     <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700">CONTACTO</th>
                     <th
@@ -841,10 +889,7 @@ const ProveedoresActuales: React.FC = () => {
                         </div>
                       </td>
                       <td className="py-4 px-6">
-                        <div className="flex flex-col">
-                          <span className="text-sm text-[#111318]">{proveedor.rut}</span>
-                          <span className="text-xs text-gray-500">{proveedor.tipo}</span>
-                        </div>
+                        <span className="text-sm text-[#111318] whitespace-nowrap">{proveedor.tipo}</span>
                       </td>
                       <td className="py-4 px-6">
                         {proveedor.especialidad.length > 0 ? (

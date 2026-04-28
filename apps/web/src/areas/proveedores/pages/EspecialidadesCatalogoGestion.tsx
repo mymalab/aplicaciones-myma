@@ -336,7 +336,7 @@ const EspecialidadesCatalogoGestion: React.FC = () => {
         </div>
 
         <div className="mt-8 text-center text-sm text-gray-500">
-          <p>(c) {new Date().getFullYear()} MyMALAB. Todos los derechos reservados.</p>
+          <p>&copy; {new Date().getFullYear()} MyMALAB. Todos los derechos reservados.</p>
         </div>
       </div>
 

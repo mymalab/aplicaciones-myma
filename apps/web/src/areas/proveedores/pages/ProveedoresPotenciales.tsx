@@ -522,7 +522,7 @@ const ProveedoresPotenciales: React.FC = () => {
 
         {/* Footer */}
         <div className="mt-8 text-center text-sm text-gray-500">
-          <p>© 2024 MyMALAB. Todos los derechos reservados.</p>
+          <p>&copy; {new Date().getFullYear()} MyMALAB. Todos los derechos reservados.</p>
         </div>
       </div>
     </div>

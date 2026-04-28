@@ -3,9 +3,32 @@
  */
 
 export enum TipoProveedor {
-  EMPRESA = 'Empresa',
-  PERSONA = 'Persona',
+  EMPRESA_EXTERNA = 'Empresa externa',
+  PERSONA = 'Persona natural',
+  ESPECIALIDADES_MYMA = 'Especialidades MyMA',
 }
+
+export const TIPO_PROVEEDOR_OPTIONS = [
+  TipoProveedor.EMPRESA_EXTERNA,
+  TipoProveedor.PERSONA,
+  TipoProveedor.ESPECIALIDADES_MYMA,
+];
+
+export const DEFAULT_TIPO_PROVEEDOR = TipoProveedor.EMPRESA_EXTERNA;
+
+export const normalizeTipoProveedor = (value: string | null | undefined): TipoProveedor => {
+  const normalizedValue = value?.trim();
+
+  if (normalizedValue === TipoProveedor.PERSONA) {
+    return TipoProveedor.PERSONA;
+  }
+
+  if (normalizedValue === TipoProveedor.ESPECIALIDADES_MYMA) {
+    return TipoProveedor.ESPECIALIDADES_MYMA;
+  }
+
+  return TipoProveedor.EMPRESA_EXTERNA;
+};
 
 export enum Especialidad {
   LABORATORIO = 'Laboratorio',

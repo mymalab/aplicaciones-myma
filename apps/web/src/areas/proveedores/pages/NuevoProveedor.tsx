@@ -11,6 +11,11 @@ import {
   fetchEspecialidadesByRut,
   saveProveedorEspecialidades,
 } from '../services/proveedoresService';
+import {
+  DEFAULT_TIPO_PROVEEDOR,
+  TIPO_PROVEEDOR_OPTIONS,
+  normalizeTipoProveedor,
+} from '../types';
 
 interface DireccionDetalleFormData {
   pais: string;
@@ -176,10 +181,10 @@ const NuevoProveedor: React.FC = () => {
     rut: '',
     razon_social: '',
     correo_contacto: '',
-    tipo_proveedor: 'Empresa',
+    tipo_proveedor: DEFAULT_TIPO_PROVEEDOR,
     pagina_web: '',
     competencia_directa: false,
-    habilitado: false,
+    habilitado: true,
     acuerdo_confidencialidad_NDA: false,
     ETFA: false,
     evaluacion: null,
@@ -271,7 +276,7 @@ const NuevoProveedor: React.FC = () => {
           rut: proveedor.rut || '',
           razon_social: proveedor.razon_social || '',
           correo_contacto: proveedor.correo_contacto || '',
-          tipo_proveedor: proveedor.tipo_proveedor || 'Empresa',
+          tipo_proveedor: normalizeTipoProveedor(proveedor.tipo_proveedor),
           pagina_web: proveedor.pagina_web || '',
           competencia_directa: toBoolean(proveedor.competencia_directa),
           habilitado: toBoolean(proveedor.competencia_directa) ? false : toBoolean(proveedor.habilitado),
@@ -655,8 +660,11 @@ const NuevoProveedor: React.FC = () => {
                   onChange={handleChange}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition-all bg-white"
                 >
-                  <option value="Empresa">Empresa</option>
-                  <option value="Persona natural">Persona natural</option>
+                  {TIPO_PROVEEDOR_OPTIONS.map((tipoProveedor) => (
+                    <option key={tipoProveedor} value={tipoProveedor}>
+                      {tipoProveedor}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>
