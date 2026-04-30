@@ -85,7 +85,6 @@ const DEFAULT_KEYWORDS = [
   'anexo',
   'apendices',
   'apendice',
-  'ci',
   'foto',
   'dwg',
 ];
@@ -391,7 +390,9 @@ const NotebookLMView: React.FC = () => {
       try {
         setLoadingNotebooks(true);
         setNotebooksError('');
-        const data = await fetchNotebookLmAccountNotebooks(notebookCookieAuth);
+        const data = await fetchNotebookLmAccountNotebooks(
+          canUseServerCredentials ? null : notebookCookieAuth
+        );
         if (!mounted) return;
         setAvailableNotebooks(data);
       } catch (error) {
@@ -492,6 +493,7 @@ const NotebookLMView: React.FC = () => {
     Boolean(notebookCookieValidation?.token_fetch_ok);
   const hasStoredNotebookCookieAuth = Boolean(notebookAuthStatus?.valid);
   const hasValidNotebookCookieAuth = hasLocalNotebookCookieAuth || hasStoredNotebookCookieAuth;
+  const notebookRequestAuthPayload = hasStoredNotebookCookieAuth ? null : notebookCookieAuth;
   const notebookCookieStatusMessage =
     hasStoredNotebookCookieAuth && !hasLocalNotebookCookieAuth
       ? 'Cookies guardadas en MyMA listas para usar. La app esta consultando el estado guardado y no necesitas volver a pegarlas.'
@@ -793,12 +795,14 @@ const NotebookLMView: React.FC = () => {
       writeStoredNotebookLmValidation(response);
 
       if (response.ok && response.token_fetch_ok && response.auth_payload) {
-        setNotebookCookieAuth(response.auth_payload);
-        writeStoredNotebookLmAuthPayload(response.auth_payload);
         try {
           await storeNotebookLmCredentials(rawCookies);
+          setNotebookCookieAuth(null);
+          writeStoredNotebookLmAuthPayload(null);
           await refreshNotebookAuthStatus();
         } catch (storeError) {
+          setNotebookCookieAuth(response.auth_payload);
+          writeStoredNotebookLmAuthPayload(response.auth_payload);
           const validationMessage =
             storeError instanceof Error
               ? storeError.message
@@ -909,7 +913,7 @@ const NotebookLMView: React.FC = () => {
             permission: sharePermission,
             notify: true,
             welcome_message: 'Te comparto este notebook.',
-          }, notebookCookieAuth || undefined);
+          }, notebookRequestAuthPayload || undefined);
           sharedEmails.push(person.email);
         } catch (error) {
           failedShares.push(
@@ -1114,7 +1118,7 @@ const NotebookLMView: React.FC = () => {
 
       const response = await createAndLoadNotebookFiltered(
         requestPayload,
-        notebookCookieAuth || undefined
+        notebookRequestAuthPayload || undefined
       );
       const queuedRunId = normalizeApiString(response.run_id) || domRunId;
       const responseNotebookId = extractNotebookIdFromResponse(response);
@@ -1195,7 +1199,7 @@ const NotebookLMView: React.FC = () => {
     }));
 
     try {
-      await retryNotebookUpload({ run_id: domRunId }, notebookCookieAuth || undefined);
+      await retryNotebookUpload({ run_id: domRunId }, notebookRequestAuthPayload || undefined);
       const refreshedStatus = await getDownloadSeiaDocumentsStatus(domRunId);
       const normalizedStatus = String(refreshedStatus.status || 'running').toLowerCase();
       const incomingDocuments = Array.isArray(refreshedStatus.documents)

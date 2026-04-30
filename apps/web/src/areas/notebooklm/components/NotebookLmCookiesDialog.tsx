@@ -55,25 +55,26 @@ const NotebookLmCookiesDialog: React.FC<NotebookLmCookiesDialogProps> = ({
     setNotebooks([]);
     setNotebooksError('');
 
-    const storedPayload = readStoredNotebookLmAuthPayload();
-    setActiveAuthPayload(storedPayload);
-
     const storedSelection = readStoredSelectedNotebook();
     setSelectedNotebookId(storedSelection?.id || '');
 
     void (async () => {
-      if (storedPayload) {
-        await loadNotebooks(storedPayload);
-        return;
-      }
-
       try {
         const status = await fetchNotebookLmCredentialsStatus();
         if (status.valid) {
+          writeStoredNotebookLmAuthPayload(null);
+          setActiveAuthPayload(null);
           await loadNotebooks(null);
+          return;
         }
       } catch {
         // No interrumpimos la UI si no hay credenciales server-side o si la sesion expiro.
+      }
+
+      const storedPayload = readStoredNotebookLmAuthPayload();
+      setActiveAuthPayload(storedPayload);
+      if (storedPayload) {
+        await loadNotebooks(storedPayload);
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -116,19 +117,22 @@ const NotebookLmCookiesDialog: React.FC<NotebookLmCookiesDialogProps> = ({
       writeStoredNotebookLmRawCookies(raw);
       writeStoredNotebookLmValidation(response);
       if (response.ok && response.token_fetch_ok && response.auth_payload) {
-        writeStoredNotebookLmAuthPayload(response.auth_payload);
-        setActiveAuthPayload(response.auth_payload);
-        onValidated?.(response.auth_payload);
         try {
           await storeNotebookLmCredentials(raw);
+          writeStoredNotebookLmAuthPayload(null);
+          setActiveAuthPayload(null);
+          await loadNotebooks(null);
         } catch (storeError) {
+          writeStoredNotebookLmAuthPayload(response.auth_payload);
+          setActiveAuthPayload(response.auth_payload);
+          onValidated?.(response.auth_payload);
           const storeMessage =
             storeError instanceof Error
               ? storeError.message
               : 'Las cookies se validaron, pero no pudimos guardarlas en tu cuenta.';
           setErrorMessage(storeMessage);
+          await loadNotebooks(response.auth_payload);
         }
-        await loadNotebooks(response.auth_payload);
       } else {
         writeStoredNotebookLmAuthPayload(null);
         setActiveAuthPayload(null);

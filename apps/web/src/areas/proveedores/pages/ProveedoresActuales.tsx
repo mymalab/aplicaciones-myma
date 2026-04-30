@@ -15,6 +15,7 @@ import {
   fetchEspecialidadesPriorizadasByRuts,
   fetchEspecialidades,
   fetchUltimaActualizacionServiciosByRuts,
+  fetchServiciosCatalogoByRuts,
 } from '../services/proveedoresService';
 import { usePermissions } from '@shared/rbac/usePermissions';
 import { normalizeSearchText } from '../utils/search';
@@ -39,6 +40,7 @@ interface ProveedorConContacto extends Proveedor {
   contactoSinValidar: boolean;
   informacionContacto: InformacionContactoProveedor;
   ultimaActualizacion: string | null;
+  servicios: string[];
 }
 
 type FiltroHabilitado = 'habilitados' | 'inhabilitados';
@@ -203,6 +205,8 @@ const ProveedoresActuales: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterTipo, setFilterTipo] = useState<string>('Todos');
   const [filterEspecialidad, setFilterEspecialidad] = useState<string>('Todas');
+  const [filterServicio, setFilterServicio] = useState<string>('');
+  const [showServicioOptions, setShowServicioOptions] = useState(false);
   const [filterClasificacion, setFilterClasificacion] = useState<string>('Todas');
   const [filterHabilitado, setFilterHabilitado] = useState<FiltroHabilitado>('habilitados');
   const [categorias, setCategorias] = useState<{ id: number; nombre: string }[]>([]);
@@ -226,7 +230,8 @@ const ProveedoresActuales: React.FC = () => {
   const mapProveedorResponseToProveedor = (
     response: ProveedorResponse,
     especialidadesPorRut: Record<string, string[]>,
-    ultimaActualizacionServiciosPorRut: Record<string, string | null>
+    ultimaActualizacionServiciosPorRut: Record<string, string | null>,
+    serviciosPorRut: Record<string, string[]>
   ): ProveedorConContacto => {
     const tipo = normalizeTipoProveedor(response.tipo_proveedor);
 
@@ -255,6 +260,7 @@ const ProveedoresActuales: React.FC = () => {
     // Obtener especialidades priorizadas por RUT
     const rut = response.rut?.trim() || '';
     const especialidades = rut ? (especialidadesPorRut[rut] ?? []) : [];
+    const servicios = rut ? (serviciosPorRut[rut] ?? []) : [];
     const ultimaActualizacion = getLatestDateIso(
       response.updated_at,
       response.created_at,
@@ -352,6 +358,7 @@ const ProveedoresActuales: React.FC = () => {
       created_at: response.created_at,
       updated_at: response.updated_at,
       ultimaActualizacion,
+      servicios,
     };
   };
 
@@ -386,15 +393,21 @@ const ProveedoresActuales: React.FC = () => {
               .filter((rut) => rut.length > 0)
           )
         );
-        const [especialidadesPorRut, ultimaActualizacionServiciosPorRut] = await Promise.all([
+        const [
+          especialidadesPorRut,
+          ultimaActualizacionServiciosPorRut,
+          serviciosPorRut,
+        ] = await Promise.all([
           fetchEspecialidadesPriorizadasByRuts(ruts),
           fetchUltimaActualizacionServiciosByRuts(ruts),
+          fetchServiciosCatalogoByRuts(ruts),
         ]);
         const mappedProveedores = data.map((proveedor) =>
           mapProveedorResponseToProveedor(
             proveedor,
             especialidadesPorRut,
-            ultimaActualizacionServiciosPorRut
+            ultimaActualizacionServiciosPorRut,
+            serviciosPorRut
           )
         );
         setProveedores(mappedProveedores);
@@ -500,6 +513,12 @@ const ProveedoresActuales: React.FC = () => {
 
   // Filtrar proveedores
   const normalizedSearchTerm = normalizeSearchText(searchTerm);
+  const serviciosDisponibles = Array.from(new Set(proveedores.flatMap((p) => p.servicios))).sort((a, b) =>
+    a.localeCompare(b, 'es', { sensitivity: 'base' })
+  );
+  const normalizedFilterServicio = normalizeSearchText(filterServicio);
+  const serviciosSugeridos = serviciosDisponibles
+    .filter((servicio) => !normalizedFilterServicio || normalizeSearchText(servicio).includes(normalizedFilterServicio));
   const filteredProveedores = proveedores.filter((proveedor) => {
     const matchesSearch =
       !normalizedSearchTerm ||
@@ -510,13 +529,16 @@ const ProveedoresActuales: React.FC = () => {
 
     const matchesTipo = filterTipo === 'Todos' || proveedor.tipo === filterTipo;
     const matchesEspecialidad = filterEspecialidad === 'Todas' || proveedor.especialidad.includes(filterEspecialidad);
+    const matchesServicio =
+      !normalizedFilterServicio ||
+      proveedor.servicios.some((servicio) => normalizeSearchText(servicio).includes(normalizedFilterServicio));
     const matchesClasificacion = filterClasificacion === 'Todas' || proveedor.clasificacion === filterClasificacion;
     const matchesHabilitado =
       filterHabilitado === 'habilitados'
         ? proveedor.habilitado === true
         : proveedor.habilitado === false;
 
-    return matchesSearch && matchesTipo && matchesEspecialidad && matchesClasificacion && matchesHabilitado;
+    return matchesSearch && matchesTipo && matchesEspecialidad && matchesServicio && matchesClasificacion && matchesHabilitado;
   });
 
   // PaginaciAn
@@ -700,7 +722,7 @@ const ProveedoresActuales: React.FC = () => {
 
         {/* Filtros */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200/40 p-4 mb-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
             {/* BAsqueda */}
             <div className="lg:col-span-1">
               <label className="block text-xs font-medium text-gray-700 mb-2">
@@ -758,6 +780,58 @@ const ProveedoresActuales: React.FC = () => {
                     </option>
                   ))}
               </select>
+            </div>
+
+            {/* Servicio */}
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-2">
+                SERVICIO
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Buscar servicio"
+                  value={filterServicio}
+                  onChange={(e) => {
+                    setFilterServicio(e.target.value);
+                    setCurrentPage(1);
+                    setShowServicioOptions(true);
+                  }}
+                  onFocus={() => setShowServicioOptions(true)}
+                  onBlur={() => {
+                    window.setTimeout(() => setShowServicioOptions(false), 100);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') {
+                      setShowServicioOptions(false);
+                    }
+                  }}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition-all bg-white"
+                />
+                {showServicioOptions && (
+                  <div className="absolute left-0 right-0 z-30 mt-1 max-h-64 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg">
+                    {serviciosSugeridos.length > 0 ? (
+                      serviciosSugeridos.map((servicio) => (
+                        <button
+                          key={servicio}
+                          type="button"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => {
+                            setFilterServicio(servicio);
+                            setCurrentPage(1);
+                            setShowServicioOptions(false);
+                          }}
+                          className="block w-full px-4 py-2 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 hover:text-[#111318]"
+                        >
+                          {servicio}
+                        </button>
+                      ))
+                    ) : (
+                      <div className="px-4 py-2 text-sm text-gray-400">Sin servicios coincidentes</div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* ClasificaciAn */}

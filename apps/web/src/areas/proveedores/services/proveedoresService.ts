@@ -571,6 +571,53 @@ export const fetchServiciosCatalogoByRut = async (rut: string): Promise<Proveedo
   return data || [];
 };
 
+export const fetchServiciosCatalogoByRuts = async (
+  ruts: string[]
+): Promise<Record<string, string[]>> => {
+  const normalizedRuts = Array.from(
+    new Set(ruts.map((rut) => rut?.trim()).filter((rut): rut is string => Boolean(rut)))
+  );
+
+  if (normalizedRuts.length === 0) {
+    return {};
+  }
+
+  const serviciosPorRut = normalizedRuts.reduce<Record<string, string[]>>((acc, rut) => {
+    acc[rut] = [];
+    return acc;
+  }, {});
+
+  const { data, error } = await supabase
+    .from('brg_proveedores_servicios')
+    .select('rut, servicio')
+    .in('rut', normalizedRuts);
+
+  if (error) {
+    console.error('Error fetching servicios de proveedores por RUT:', error);
+    throw error;
+  }
+
+  (data || []).forEach((item) => {
+    const rut = typeof item.rut === 'string' ? item.rut.trim() : '';
+    const servicio = typeof item.servicio === 'string' ? item.servicio.trim() : '';
+
+    if (!rut || !servicio) {
+      return;
+    }
+
+    serviciosPorRut[rut] = serviciosPorRut[rut] || [];
+    serviciosPorRut[rut].push(servicio);
+  });
+
+  Object.keys(serviciosPorRut).forEach((rut) => {
+    serviciosPorRut[rut] = Array.from(new Set(serviciosPorRut[rut])).sort((a, b) =>
+      a.localeCompare(b, 'es', { sensitivity: 'base' })
+    );
+  });
+
+  return serviciosPorRut;
+};
+
 export const normalizeServiciosCatalogoByRut = (
   catalogo: ProveedorServicioCatalogo[]
 ): ProveedorServicioCatalogoNormalizado[] => {
