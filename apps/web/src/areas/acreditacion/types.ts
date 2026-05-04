@@ -246,6 +246,7 @@ export interface RequestFormData {
   projectCode: string;
   esContratoMarco: string;
   requirement: string;
+  paseVisitaInfo: string;
   clientName: string;
   clientContactName: string;
   clientContactEmail: string;
@@ -310,10 +311,12 @@ export interface FieldRequestFormSnapshot {
 export const SOLICITUD_ACREDITACION_STATUS = {
   POR_ASIGNAR_REQUERIMIENTOS: 'Por asignar requerimientos',
   POR_ASIGNAR_RESPONSABLES: 'Por asignar responsables',
+  POR_FINALIZAR: 'Por finalizar',
   EN_PROCESO: 'En proceso',
   DOCUMENTACION_SUBIDA: 'Documentación subida',
   EN_REVISION_CLIENTE: 'En revisión por Cliente',
   ACREDITACION_FINALIZADA: 'Acreditación finalizada',
+  PASE_VISITA_FINALIZADO: 'Pase de visita finalizado',
   CANCELADO: 'Cancelado',
   ATRASADO: 'Atrasado',
 } as const;
@@ -329,6 +332,7 @@ export interface SolicitudAcreditacion {
   fecha_reunion_arranque: string;
   codigo_proyecto: string;
   requisito: string;
+  pase_visita_info?: string | null;
   nombre_cliente: string;
   contacto_cliente_nombre?: string;
   contacto_cliente_email?: string;

@@ -115,6 +115,10 @@ export const canonicalizeSolicitudStatus = (
     return SOLICITUD_ACREDITACION_STATUS.ACREDITACION_FINALIZADA;
   }
 
+  if (normalizedStatus.includes('pase de visita finalizado')) {
+    return SOLICITUD_ACREDITACION_STATUS.PASE_VISITA_FINALIZADO;
+  }
+
   if (normalizedStatus.includes('documentacion subida')) {
     return SOLICITUD_ACREDITACION_STATUS.DOCUMENTACION_SUBIDA;
   }
@@ -129,6 +133,10 @@ export const canonicalizeSolicitudStatus = (
 
   if (normalizedStatus.includes('por asignar responsables')) {
     return SOLICITUD_ACREDITACION_STATUS.POR_ASIGNAR_RESPONSABLES;
+  }
+
+  if (normalizedStatus.includes('por finalizar')) {
+    return SOLICITUD_ACREDITACION_STATUS.POR_FINALIZAR;
   }
 
   if (normalizedStatus.includes('en proceso')) {
@@ -148,9 +156,13 @@ export const canonicalizeSolicitudStatus = (
 
 export const isSolicitudStatusAcreditacionFinalizada = (
   status: string | null | undefined
-): boolean =>
-  canonicalizeSolicitudStatus(status) ===
-  SOLICITUD_ACREDITACION_STATUS.ACREDITACION_FINALIZADA;
+): boolean => {
+  const canonicalStatus = canonicalizeSolicitudStatus(status);
+  return (
+    canonicalStatus === SOLICITUD_ACREDITACION_STATUS.ACREDITACION_FINALIZADA ||
+    canonicalStatus === SOLICITUD_ACREDITACION_STATUS.PASE_VISITA_FINALIZADO
+  );
+};
 
 export const isSolicitudStatusCancelled = (status: string | null | undefined): boolean =>
   canonicalizeSolicitudStatus(status) === SOLICITUD_ACREDITACION_STATUS.CANCELADO;
@@ -165,7 +177,8 @@ export const isSolicitudStatusPostDocumentation = (
   return (
     canonicalStatus === SOLICITUD_ACREDITACION_STATUS.DOCUMENTACION_SUBIDA ||
     canonicalStatus === SOLICITUD_ACREDITACION_STATUS.EN_REVISION_CLIENTE ||
-    canonicalStatus === SOLICITUD_ACREDITACION_STATUS.ACREDITACION_FINALIZADA
+    canonicalStatus === SOLICITUD_ACREDITACION_STATUS.ACREDITACION_FINALIZADA ||
+    canonicalStatus === SOLICITUD_ACREDITACION_STATUS.PASE_VISITA_FINALIZADO
   );
 };
 
@@ -175,9 +188,11 @@ export const canRestrictedCollaboratorOpenSolicitudStatus = (
   const canonicalStatus = canonicalizeSolicitudStatus(status);
   return (
     canonicalStatus === SOLICITUD_ACREDITACION_STATUS.EN_PROCESO ||
+    canonicalStatus === SOLICITUD_ACREDITACION_STATUS.POR_FINALIZAR ||
     canonicalStatus === SOLICITUD_ACREDITACION_STATUS.DOCUMENTACION_SUBIDA ||
     canonicalStatus === SOLICITUD_ACREDITACION_STATUS.EN_REVISION_CLIENTE ||
-    canonicalStatus === SOLICITUD_ACREDITACION_STATUS.ACREDITACION_FINALIZADA
+    canonicalStatus === SOLICITUD_ACREDITACION_STATUS.ACREDITACION_FINALIZADA ||
+    canonicalStatus === SOLICITUD_ACREDITACION_STATUS.PASE_VISITA_FINALIZADO
   );
 };
 
@@ -3145,6 +3160,7 @@ const createEmptyFieldRequestFormData = (): RequestFormData => ({
   projectCode: 'MY-',
   esContratoMarco: '',
   requirement: '',
+  paseVisitaInfo: '',
   clientName: '',
   clientContactName: '',
   clientContactEmail: '',
@@ -3327,6 +3343,7 @@ export const fetchFieldRequestFormSnapshotByProjectId = async (
     projectCode: solicitud.codigo_proyecto || '',
     esContratoMarco: solicitud.numero_contrato ? 'yes' : 'no',
     requirement: solicitud.requisito || '',
+    paseVisitaInfo: solicitud.pase_visita_info || '',
     clientName: solicitud.nombre_cliente || '',
     clientContactName: solicitud.nombre_contacto_cliente || solicitud.contacto_cliente_nombre || '',
     clientContactEmail: solicitud.email_contacto_cliente || solicitud.contacto_cliente_email || '',

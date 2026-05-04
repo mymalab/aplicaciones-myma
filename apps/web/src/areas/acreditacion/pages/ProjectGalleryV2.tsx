@@ -19,6 +19,7 @@ import {
   fetchProjectGalleryItems,
   updateProyectoRequerimientosResponsables,
   updateResponsablesSolicitud,
+  updateSolicitudAcreditacion,
   createProyectoRequerimientos,
   deleteSolicitudAcreditacion,
 } from '../services/acreditacionService';
@@ -56,6 +57,8 @@ const ProjectGalleryV2: React.FC<ProjectGalleryV2Props> = ({
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [deletingProjectId, setDeletingProjectId] = useState<number | null>(null);
   const [projectToDelete, setProjectToDelete] = useState<ProjectGalleryItem | null>(null);
+  const [paseVisitaProject, setPaseVisitaProject] = useState<ProjectGalleryItem | null>(null);
+  const [finalizingPaseVisitaId, setFinalizingPaseVisitaId] = useState<number | null>(null);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const isDrillDownView = showDetailView || showCompanyView || showSubmittedFormView;
   const isDebugLogging = import.meta.env.DEV;
@@ -192,6 +195,9 @@ const ProjectGalleryV2: React.FC<ProjectGalleryV2Props> = ({
     if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.POR_ASIGNAR_RESPONSABLES) {
       return 'bg-yellow-100 text-yellow-700 border-yellow-200';
     }
+    if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.POR_FINALIZAR) {
+      return 'bg-amber-100 text-amber-700 border-amber-200';
+    }
     if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.EN_PROCESO) {
       return 'bg-blue-100 text-blue-700 border-blue-200';
     }
@@ -201,7 +207,10 @@ const ProjectGalleryV2: React.FC<ProjectGalleryV2Props> = ({
     if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.EN_REVISION_CLIENTE) {
       return 'bg-cyan-100 text-cyan-700 border-cyan-200';
     }
-    if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.ACREDITACION_FINALIZADA) {
+    if (
+      canonicalStatus === SOLICITUD_ACREDITACION_STATUS.ACREDITACION_FINALIZADA ||
+      canonicalStatus === SOLICITUD_ACREDITACION_STATUS.PASE_VISITA_FINALIZADO
+    ) {
       return 'bg-green-100 text-green-700 border-green-200';
     }
     if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.CANCELADO) {
@@ -219,10 +228,14 @@ const ProjectGalleryV2: React.FC<ProjectGalleryV2Props> = ({
 
     if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.POR_ASIGNAR_REQUERIMIENTOS) return 'border-amber-500 bg-amber-50';
     if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.POR_ASIGNAR_RESPONSABLES) return 'border-yellow-500 bg-yellow-50';
+    if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.POR_FINALIZAR) return 'border-amber-500 bg-amber-50';
     if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.EN_PROCESO) return 'border-blue-500 bg-blue-50';
     if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.DOCUMENTACION_SUBIDA) return 'border-emerald-500 bg-emerald-50';
     if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.EN_REVISION_CLIENTE) return 'border-cyan-500 bg-cyan-50';
-    if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.ACREDITACION_FINALIZADA) return 'border-green-500 bg-green-50';
+    if (
+      canonicalStatus === SOLICITUD_ACREDITACION_STATUS.ACREDITACION_FINALIZADA ||
+      canonicalStatus === SOLICITUD_ACREDITACION_STATUS.PASE_VISITA_FINALIZADO
+    ) return 'border-green-500 bg-green-50';
     if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.CANCELADO) return 'border-red-500 bg-red-50';
     if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.ATRASADO) return 'border-orange-500 bg-orange-50';
     return 'border-gray-500 bg-gray-50';
@@ -233,10 +246,14 @@ const ProjectGalleryV2: React.FC<ProjectGalleryV2Props> = ({
 
     if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.POR_ASIGNAR_REQUERIMIENTOS) return 'border-l-4 border-l-amber-500';
     if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.POR_ASIGNAR_RESPONSABLES) return 'border-l-4 border-l-yellow-500';
+    if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.POR_FINALIZAR) return 'border-l-4 border-l-amber-500';
     if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.EN_PROCESO) return 'border-l-4 border-l-blue-500';
     if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.DOCUMENTACION_SUBIDA) return 'border-l-4 border-l-emerald-500';
     if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.EN_REVISION_CLIENTE) return 'border-l-4 border-l-cyan-500';
-    if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.ACREDITACION_FINALIZADA) return 'border-l-4 border-l-green-500';
+    if (
+      canonicalStatus === SOLICITUD_ACREDITACION_STATUS.ACREDITACION_FINALIZADA ||
+      canonicalStatus === SOLICITUD_ACREDITACION_STATUS.PASE_VISITA_FINALIZADO
+    ) return 'border-l-4 border-l-green-500';
     if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.CANCELADO) return 'border-l-4 border-l-red-500';
     if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.ATRASADO) return 'border-l-4 border-l-orange-500';
     return 'border-l-4 border-l-gray-500';
@@ -274,12 +291,25 @@ const ProjectGalleryV2: React.FC<ProjectGalleryV2Props> = ({
     return false;
   };
 
+  const isPaseVisitaProject = (project: ProjectGalleryItem): boolean =>
+    (project.projectName || '').trim().toLowerCase() === 'pase de visita';
+
+  const isFinishedGalleryStatus = (status: string | null | undefined): boolean => {
+    const canonicalStatus = canonicalizeSolicitudStatus(status);
+    return (
+      canonicalStatus === SOLICITUD_ACREDITACION_STATUS.ACREDITACION_FINALIZADA ||
+      canonicalStatus === SOLICITUD_ACREDITACION_STATUS.PASE_VISITA_FINALIZADO
+    );
+  };
+
   const restrictedAccessStatusMessage =
     `Solo administradores pueden abrir cualquier estado. ` +
-    `Editor/Viewer solo pueden abrir estados ${SOLICITUD_ACREDITACION_STATUS.EN_PROCESO}, ` +
+    `Editor/Viewer solo pueden abrir estados ${SOLICITUD_ACREDITACION_STATUS.POR_FINALIZAR}, ` +
+    `${SOLICITUD_ACREDITACION_STATUS.EN_PROCESO}, ` +
     `${SOLICITUD_ACREDITACION_STATUS.DOCUMENTACION_SUBIDA}, ` +
     `${SOLICITUD_ACREDITACION_STATUS.EN_REVISION_CLIENTE} o ` +
-    `${SOLICITUD_ACREDITACION_STATUS.ACREDITACION_FINALIZADA}.`;
+    `${SOLICITUD_ACREDITACION_STATUS.ACREDITACION_FINALIZADA} / ` +
+    `${SOLICITUD_ACREDITACION_STATUS.PASE_VISITA_FINALIZADO}.`;
 
   const handleProjectClick = (project: ProjectGalleryItem) => {
     if (!canOpenProjectCard(project)) {
@@ -290,6 +320,11 @@ const ProjectGalleryV2: React.FC<ProjectGalleryV2Props> = ({
     }
 
     setSelectedProject(project);
+
+    if (isPaseVisitaProject(project)) {
+      setPaseVisitaProject(project);
+      return;
+    }
 
     const canonicalStatus = canonicalizeSolicitudStatus(project.status);
 
@@ -403,6 +438,63 @@ const ProjectGalleryV2: React.FC<ProjectGalleryV2Props> = ({
     } finally {
       setDeletingProjectId(null);
       setProjectToDelete(null);
+    }
+  };
+
+  const closePaseVisitaModal = () => {
+    if (finalizingPaseVisitaId) return;
+    setPaseVisitaProject(null);
+    setSelectedProject(null);
+  };
+
+  const finalizePaseVisitaProject = async () => {
+    if (!paseVisitaProject || !paseVisitaProject.id || typeof paseVisitaProject.id !== 'number') {
+      setPaseVisitaProject(null);
+      setSelectedProject(null);
+      return;
+    }
+
+    try {
+      setFinalizingPaseVisitaId(paseVisitaProject.id);
+      const finishedAt = new Date().toISOString();
+      await updateSolicitudAcreditacion(paseVisitaProject.id, {
+        estado_solicitud_acreditacion: SOLICITUD_ACREDITACION_STATUS.PASE_VISITA_FINALIZADO,
+        fecha_finalizacion: finishedAt,
+      });
+
+      setLocalProjects((prevProjects) =>
+        prevProjects.map((project) =>
+          project.id === paseVisitaProject.id
+            ? {
+                ...project,
+                status: SOLICITUD_ACREDITACION_STATUS.PASE_VISITA_FINALIZADO,
+                fechaFinalizacion: finishedAt,
+              }
+            : project
+        )
+      );
+
+      if (onProjectUpdate) {
+        onProjectUpdate();
+      }
+
+      setSuccess({
+        title: 'Solicitud finalizada',
+        message: `La solicitud "${paseVisitaProject.projectCode}" fue finalizada directamente como Pase de visita.`,
+      });
+      setTimeout(() => setSuccess(null), 5000);
+      setPaseVisitaProject(null);
+      setSelectedProject(null);
+    } catch (finalizeError) {
+      console.error('Error finalizando Pase de visita:', finalizeError);
+      setError(
+        `Error al finalizar Pase de visita: ${
+          finalizeError instanceof Error ? finalizeError.message : 'Error desconocido'
+        }`
+      );
+      setTimeout(() => setError(null), 8000);
+    } finally {
+      setFinalizingPaseVisitaId(null);
     }
   };
 
@@ -625,10 +717,7 @@ const ProjectGalleryV2: React.FC<ProjectGalleryV2Props> = ({
   // Proyectos activos = todos los que NO estén cancelados ni en acreditación finalizada
   const activeProjects = localProjects.filter(p => {
     const canonicalStatus = canonicalizeSolicitudStatus(p.status);
-    return (
-      canonicalStatus !== SOLICITUD_ACREDITACION_STATUS.CANCELADO &&
-      canonicalStatus !== SOLICITUD_ACREDITACION_STATUS.ACREDITACION_FINALIZADA
-    );
+    return canonicalStatus !== SOLICITUD_ACREDITACION_STATUS.CANCELADO && !isFinishedGalleryStatus(p.status);
   }).length;
   
   // Calcular proyectos atrasados: contar solo los que tienen estado "Atrasado"
@@ -638,9 +727,7 @@ const ProjectGalleryV2: React.FC<ProjectGalleryV2Props> = ({
   }).length;
   
   // Calcular tiempo promedio de acreditaciones finalizadas (en días)
-  const finishedProjects = localProjects.filter(
-    p => canonicalizeSolicitudStatus(p.status) === SOLICITUD_ACREDITACION_STATUS.ACREDITACION_FINALIZADA
-  );
+  const finishedProjects = localProjects.filter((p) => isFinishedGalleryStatus(p.status));
   const averageDuration = finishedProjects.length > 0
     ? Math.round(
         finishedProjects.reduce((sum, p) => {
@@ -845,10 +932,12 @@ const ProjectGalleryV2: React.FC<ProjectGalleryV2Props> = ({
                 <option value="">Todos los estados</option>
                 <option value={SOLICITUD_ACREDITACION_STATUS.POR_ASIGNAR_REQUERIMIENTOS}>Por asignar requerimientos</option>
                 <option value={SOLICITUD_ACREDITACION_STATUS.POR_ASIGNAR_RESPONSABLES}>Por asignar responsables</option>
+                <option value={SOLICITUD_ACREDITACION_STATUS.POR_FINALIZAR}>{SOLICITUD_ACREDITACION_STATUS.POR_FINALIZAR}</option>
                 <option value={SOLICITUD_ACREDITACION_STATUS.EN_PROCESO}>En proceso</option>
                 <option value={SOLICITUD_ACREDITACION_STATUS.DOCUMENTACION_SUBIDA}>{SOLICITUD_ACREDITACION_STATUS.DOCUMENTACION_SUBIDA}</option>
                 <option value={SOLICITUD_ACREDITACION_STATUS.EN_REVISION_CLIENTE}>{SOLICITUD_ACREDITACION_STATUS.EN_REVISION_CLIENTE}</option>
                 <option value={SOLICITUD_ACREDITACION_STATUS.ACREDITACION_FINALIZADA}>{SOLICITUD_ACREDITACION_STATUS.ACREDITACION_FINALIZADA}</option>
+                <option value={SOLICITUD_ACREDITACION_STATUS.PASE_VISITA_FINALIZADO}>{SOLICITUD_ACREDITACION_STATUS.PASE_VISITA_FINALIZADO}</option>
                 <option value={SOLICITUD_ACREDITACION_STATUS.CANCELADO}>Cancelado</option>
                 <option value={SOLICITUD_ACREDITACION_STATUS.ATRASADO}>Atrasado</option>
               </select>
@@ -888,10 +977,12 @@ const ProjectGalleryV2: React.FC<ProjectGalleryV2Props> = ({
                 const canonicalStatus = canonicalizeSolicitudStatus(project.status);
                 if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.POR_ASIGNAR_REQUERIMIENTOS) return 'group-hover:to-amber-50';
                 if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.POR_ASIGNAR_RESPONSABLES) return 'group-hover:to-yellow-50';
+                if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.POR_FINALIZAR) return 'group-hover:to-amber-50';
                 if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.EN_PROCESO) return 'group-hover:to-blue-50';
                 if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.DOCUMENTACION_SUBIDA) return 'group-hover:to-emerald-50';
                 if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.EN_REVISION_CLIENTE) return 'group-hover:to-cyan-50';
                 if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.ACREDITACION_FINALIZADA) return 'group-hover:to-green-50';
+                if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.PASE_VISITA_FINALIZADO) return 'group-hover:to-green-50';
                 if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.CANCELADO) return 'group-hover:to-red-50';
                 if (canonicalStatus === SOLICITUD_ACREDITACION_STATUS.ATRASADO) return 'group-hover:to-orange-50';
                 return 'group-hover:to-gray-50';
@@ -1248,6 +1339,82 @@ const ProjectGalleryV2: React.FC<ProjectGalleryV2Props> = ({
             legal_nombre: (selectedProject as any).legal_nombre,
           }}
         />
+      )}
+
+      {paseVisitaProject && (
+        <div
+          className="fixed inset-0 z-[70] bg-black/50 flex items-center justify-center p-4"
+          onClick={closePaseVisitaModal}
+        >
+          <div
+            className="w-full max-w-lg bg-white rounded-xl border border-gray-200 shadow-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-5 border-b border-gray-100 flex items-start gap-3">
+              <div className="w-10 h-10 rounded-lg bg-amber-100 border border-amber-200 flex items-center justify-center flex-shrink-0">
+                <span className="material-symbols-outlined text-amber-600">badge</span>
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="text-sm font-bold text-[#111318]">Pase de visita</h3>
+                  <span
+                    className={`px-2 py-1 rounded-md border text-xs font-semibold ${getStatusColor(
+                      String(canonicalizeSolicitudStatus(paseVisitaProject.status))
+                    )}`}
+                  >
+                    {String(canonicalizeSolicitudStatus(paseVisitaProject.status))}
+                  </span>
+                </div>
+                <p className="text-sm text-gray-600 mt-1">
+                  Solicitud <span className="font-semibold">{paseVisitaProject.projectCode}</span>
+                  {paseVisitaProject.clientName ? ` para ${paseVisitaProject.clientName}` : ''}.
+                </p>
+                <p className="text-xs text-gray-500 mt-2">
+                  Esta solicitud se finaliza directamente y no pasa por asignación de requerimientos,
+                  responsables ni revisión documental.
+                </p>
+              </div>
+            </div>
+            <div className="p-4 bg-gray-50 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2">
+              <button
+                type="button"
+                onClick={closePaseVisitaModal}
+                disabled={Boolean(finalizingPaseVisitaId)}
+                className="px-3 py-2 rounded-lg border border-gray-200 bg-white text-gray-700 text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cerrar
+              </button>
+              <button
+                type="button"
+                onClick={finalizePaseVisitaProject}
+                disabled={
+                  Boolean(finalizingPaseVisitaId) ||
+                  canonicalizeSolicitudStatus(paseVisitaProject.status) ===
+                    SOLICITUD_ACREDITACION_STATUS.PASE_VISITA_FINALIZADO
+                }
+                className="px-3 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {finalizingPaseVisitaId === paseVisitaProject.id ? (
+                  <>
+                    <div className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    Finalizando...
+                  </>
+                ) : canonicalizeSolicitudStatus(paseVisitaProject.status) ===
+                  SOLICITUD_ACREDITACION_STATUS.PASE_VISITA_FINALIZADO ? (
+                  <>
+                    <span className="material-symbols-outlined text-[16px]">check_circle</span>
+                    Ya finalizada
+                  </>
+                ) : (
+                  <>
+                    <span className="material-symbols-outlined text-[16px]">task_alt</span>
+                    Finalizar solicitud
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Mensaje de éxito */}

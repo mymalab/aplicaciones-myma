@@ -122,6 +122,7 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
     projectCode: PROJECT_CODE_PREFIX,
     esContratoMarco: 'no',
     requirement: '',
+    paseVisitaInfo: '',
     clientName: '',
     clientContactName: '',
     clientContactEmail: '',
@@ -210,10 +211,17 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
   );
   const contractorAccreditationAnchorRef = useRef<HTMLDivElement | null>(null);
   const contractorWorkersAccreditationAnchorRef = useRef<HTMLDivElement | null>(null);
+  const paseVisitaInfoTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const pendingContractorScrollAnchorRef = useRef<{
     section: 'contractor' | 'contractorWorkers';
     top: number;
   } | null>(null);
+
+  const resizeTextareaToContent = (textarea: HTMLTextAreaElement | null) => {
+    if (!textarea) return;
+    textarea.style.height = 'auto';
+    textarea.style.height = `${textarea.scrollHeight}px`;
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -257,6 +265,7 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
     setFormData({
       ...initialSnapshot.formData,
       fechaEntregaCarpetaArranque: initialSnapshot.formData.fechaEntregaCarpetaArranque || '',
+      paseVisitaInfo: initialSnapshot.formData.paseVisitaInfo || '',
       esContratoMarco:
         initialSnapshot.formData.esContratoMarco ||
         (initialSnapshot.formData.numeroContrato ? 'yes' : 'no'),
@@ -310,6 +319,7 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
       projectCode: PROJECT_CODE_PREFIX,
       esContratoMarco: 'no',
       requirement: '',
+      paseVisitaInfo: '',
       clientName: '',
       clientContactName: '',
       clientContactEmail: '',
@@ -893,6 +903,14 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
     formData.requiereAcreditarTrabajadoresContratista,
   ]);
 
+  useLayoutEffect(() => {
+    if (!isViewMode && formData.requirement !== 'Pase de visita') {
+      return;
+    }
+
+    resizeTextareaToContent(paseVisitaInfoTextareaRef.current);
+  }, [formData.paseVisitaInfo, formData.requirement, isViewMode]);
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
 
@@ -961,8 +979,33 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
 
       if (name === 'requirement') {
         const isCarpetaArranqueOnly = value === 'Carpeta de arranque';
+        const isPaseVisita = value === 'Pase de visita';
         const hasCarpetaArranque = isCarpetaArranqueOnly || value === 'Acreditación y Carpeta de arranque';
-        if (isCarpetaArranqueOnly) {
+        if (!isPaseVisita) {
+          nextFormData.paseVisitaInfo = '';
+        }
+        if (isPaseVisita) {
+          nextFormData.kickoffDate = '';
+          nextFormData.fieldStartDate = '';
+          nextFormData.fechaEntregaCarpetaArranque = '';
+          nextFormData.companyAccreditationRequired = 'no';
+          nextFormData.requiereAcreditarTrabajadoresMyma = 'no';
+          nextFormData.requiereAcreditarContratista = 'no';
+          nextFormData.requiereAcreditarTrabajadoresContratista = 'no';
+          nextFormData.nombreContrato = '';
+          nextFormData.numeroContrato = '';
+          nextFormData.administradorContrato = '';
+          nextFormData.jornadaTrabajo = '';
+          nextFormData.horarioTrabajo = '';
+          nextFormData.cantidadVehiculos = '';
+          nextFormData.modalidadContrato = '';
+          nextFormData.razonSocialContratista = '';
+          nextFormData.nombreResponsableContratista = '';
+          nextFormData.telefonoResponsableContratista = '';
+          nextFormData.emailResponsableContratista = '';
+          nextFormData.cantidadVehiculosContratista = '';
+          nextFormData.registroSstTerreo = '';
+        } else if (isCarpetaArranqueOnly) {
           nextFormData.fieldStartDate = '';
         } else if (!hasCarpetaArranque) {
           nextFormData.fechaEntregaCarpetaArranque = '';
@@ -987,6 +1030,16 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
       setTargetWorkerCountMyma(0);
       setHorarios([]);
       setVehiculosMyma([]);
+    }
+
+    if (name === 'requirement' && value === 'Pase de visita') {
+      setWorkers([]);
+      setWorkersContratista([]);
+      setTargetWorkerCountMyma(0);
+      setTargetWorkerCountContratista(0);
+      setHorarios([]);
+      setVehiculosMyma([]);
+      setVehiculosContratista([]);
     }
 
     if (name === 'requiereAcreditarTrabajadoresContratista' && value !== 'yes') {
@@ -1306,6 +1359,7 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
       }
 
       const isCarpetaArranqueOnly = formData.requirement === 'Carpeta de arranque';
+      const isPaseVisita = formData.requirement === 'Pase de visita';
       const hasCarpetaArranque = isCarpetaArranqueOnly || formData.requirement === 'Acreditación y Carpeta de arranque';
 
       if (!effectiveOmitirCamposObligatorios) {
@@ -1339,8 +1393,13 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
         return;
       }
 
-      if (!isCarpetaArranqueOnly && !formData.fieldStartDate) {
+      if (!isCarpetaArranqueOnly && !isPaseVisita && !formData.fieldStartDate) {
         alert('La fecha de inicio de terreno es obligatoria.');
+        return;
+      }
+
+      if (isPaseVisita && !formData.paseVisitaInfo.trim()) {
+        alert('Debes completar la Informacion de pase de visita.');
         return;
       }
 
@@ -1446,12 +1505,12 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
       const solicitudData: any = {
         fecha_solicitud: formData.requestDate || null,
         nombre_solicitante: formData.requesterName || null,
-        fecha_reunion_arranque: formData.kickoffDate || null,
+        fecha_reunion_arranque: isPaseVisita ? null : formData.kickoffDate || null,
         codigo_proyecto: formData.projectCode,  // Requerido (NOT NULL)
         requisito: formData.requirement || null,
         nombre_cliente: formData.clientName || null,
         jefe_proyectos_myma: formData.projectManager || null,
-        fecha_inicio_terreno: isCarpetaArranqueOnly ? null : formData.fieldStartDate || null,
+        fecha_inicio_terreno: isCarpetaArranqueOnly || isPaseVisita ? null : formData.fieldStartDate || null,
         fecha_entrega_carpeta_arranque:
           hasCarpetaArranque ? formData.fechaEntregaCarpetaArranque || null : null,
         estado_carpeta_arranque: hasCarpetaArranque ? 'Pendiente Carpeta de arranque' : null,
@@ -1460,8 +1519,9 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
         admin_contrato_myma: formData.contractAdmin || null,
         email_usuario: emailUsuario,
         solicitud_prueba: effectiveSolicitudPrueba,
-        estado_solicitud_acreditacion:
-          SOLICITUD_ACREDITACION_STATUS.POR_ASIGNAR_REQUERIMIENTOS, // Estado inicial del proyecto
+        estado_solicitud_acreditacion: isPaseVisita
+          ? SOLICITUD_ACREDITACION_STATUS.POR_FINALIZAR
+          : SOLICITUD_ACREDITACION_STATUS.POR_ASIGNAR_REQUERIMIENTOS, // Estado inicial del proyecto
       };
 
       // Agregar campos opcionales solo si tienen valor - Nombres corregidos
@@ -1470,6 +1530,9 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
       }
       if (formData.clientContactEmail) {
         solicitudData.email_contacto_cliente = formData.clientContactEmail; // Nombre corregido
+      }
+      if (isPaseVisita) {
+        solicitudData.pase_visita_info = formData.paseVisitaInfo.trim() || null;
       }
 
       // Cantidad de trabajadores
@@ -1878,6 +1941,10 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
       projectCode: `MY-${String(randomInt(1, 999)).padStart(3, '0')}-${new Date().getFullYear()}`,
       esContratoMarco: 'no',
       requirement: requirementSelection,
+      paseVisitaInfo:
+        requirementSelection === 'Pase de visita'
+          ? 'Informacion de pase de visita de prueba'
+          : '',
       clientName: empresaCliente,
       clientContactName: nombreCliente,
       clientContactEmail: `${normalizeEmail(nombreCliente)}@${normalizeEmail(empresaCliente)}.cl`,
@@ -2200,11 +2267,15 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
       (nombre) => nombre.toLowerCase() === formData.contractAdmin.trim().toLowerCase()
     );
   const isCarpetaArranqueOnly = formData.requirement === 'Carpeta de arranque';
+  const isPaseVisita = formData.requirement === 'Pase de visita';
   const hasCarpetaArranque =
     isCarpetaArranqueOnly || formData.requirement === 'Acreditación y Carpeta de arranque';
-  const hasRequiredDateForRequirement = isCarpetaArranqueOnly
-    ? formData.fechaEntregaCarpetaArranque.trim() !== ''
-    : formData.fieldStartDate.trim() !== '';
+  const hasRequiredDateForRequirement = isPaseVisita
+    ? true
+    : isCarpetaArranqueOnly
+      ? formData.fechaEntregaCarpetaArranque.trim() !== ''
+      : formData.fieldStartDate.trim() !== '';
+  const hasRequiredPaseVisitaInfo = !isPaseVisita || formData.paseVisitaInfo.trim() !== '';
 
   const areAllRequiredFieldsCompleted =
     hasValidProjectCode &&
@@ -2212,6 +2283,7 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
     formData.requestDate.trim() !== '' &&
     formData.requesterName.trim() !== '' &&
     hasRequiredDateForRequirement &&
+    hasRequiredPaseVisitaInfo &&
     formData.clientName.trim() !== '' &&
     formData.projectManager.trim() !== '' &&
     formData.contractAdmin.trim() !== '' &&
@@ -2456,7 +2528,8 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
                   name="kickoffDate"
                   value={formData.kickoffDate}
                   onChange={handleInputChange}
-                  className="form-input w-full rounded-lg border border-[#dbdfe6] bg-white px-3 py-2.5 text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none" 
+                  disabled={isPaseVisita}
+                  className="form-input w-full rounded-lg border border-[#dbdfe6] bg-white px-3 py-2.5 text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none disabled:bg-[#f3f4f6] disabled:text-[#9ca3af] disabled:cursor-not-allowed" 
                 />
               </label>
               <label className="flex flex-col gap-2 lg:col-span-2">
@@ -2580,7 +2653,7 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
               </label>
               <label className="flex flex-col gap-2">
                 <span className="text-[#111318] text-sm font-medium">
-                  Fecha de Inicio de Terreno {!isCarpetaArranqueOnly && <span className="text-red-500">*</span>}
+                  Fecha de Inicio de Terreno {!isCarpetaArranqueOnly && !isPaseVisita && <span className="text-red-500">*</span>}
                 </span>
                 <div className="relative">
                    <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-base">calendar_today</span>
@@ -2589,8 +2662,8 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
                     name="fieldStartDate"
                     value={formData.fieldStartDate}
                     onChange={handleInputChange}
-                    required={!isCarpetaArranqueOnly}
-                    disabled={isCarpetaArranqueOnly}
+                    required={!isCarpetaArranqueOnly && !isPaseVisita}
+                    disabled={isCarpetaArranqueOnly || isPaseVisita}
                     className="form-input w-full rounded-lg border border-[#dbdfe6] bg-white px-3 py-2.5 text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none pl-10 disabled:bg-[#f3f4f6] disabled:text-[#9ca3af] disabled:cursor-not-allowed" 
                   />
                 </div>
@@ -2697,6 +2770,7 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
                 </div>
               </label>
               
+              {!isPaseVisita && (
               <div className="md:col-span-2 flex flex-col gap-3">
                 <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
                   <span className="text-[#111318] text-sm font-medium">Contactos del Cliente</span>
@@ -2825,8 +2899,43 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
                   )}
                 </div>
               </div>
+              )}
             </div>
           </div>
+
+          {isPaseVisita && (
+            <div className="rounded-xl border border-[#e5e7eb] bg-white shadow-sm">
+              <div className="border-b border-[#e5e7eb] px-6 py-4 bg-gray-50/50">
+                <h3 className="text-[#111318] text-base lg:text-lg font-bold leading-tight flex items-center gap-2">
+                  <span className="material-symbols-outlined text-primary">badge</span>
+                  Pase de visita
+                </h3>
+              </div>
+              <div className="p-6">
+                <label className="flex flex-col gap-2">
+                  <span className="text-[#111318] text-sm font-medium">
+                    Informacion de pase de visita <span className="text-red-500">*</span>
+                  </span>
+                  <textarea
+                    ref={paseVisitaInfoTextareaRef}
+                    name="paseVisitaInfo"
+                    value={formData.paseVisitaInfo}
+                    onChange={handleInputChange}
+                    onInput={(event) => resizeTextareaToContent(event.currentTarget)}
+                    rows={4}
+                    placeholder="Informacion de pase de visita"
+                    required
+                    className="form-input w-full rounded-lg border border-[#dbdfe6] bg-white px-3 py-2.5 text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none resize-none overflow-hidden"
+                  />
+                  <p className="text-xs leading-5 text-red-600">
+                    Debes agregar: nombre de las personas que irán, motivo de visita, área de
+                    visita, nombre del solicitante del cliente y nombre de quién autoriza por parte
+                    del cliente.
+                  </p>
+                </label>
+              </div>
+            </div>
+          )}
 
           {/* Section 3: Gestión Interna MYMA */}
           <div className="rounded-xl border border-[#e5e7eb] bg-white shadow-sm">
@@ -3098,8 +3207,9 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
                       value="yes"
                       checked={formData.companyAccreditationRequired === 'yes'}
                       onChange={handleInputChange}
-                      required
-                      className="w-4 h-4 text-primary border-gray-300 focus:ring-primary"
+                      required={!isPaseVisita}
+                      disabled={isPaseVisita}
+                      className="w-4 h-4 text-primary border-gray-300 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-60"
                     />
                     <span className="text-sm">Sí</span>
                   </label>
@@ -3110,7 +3220,8 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
                       value="no"
                       checked={formData.companyAccreditationRequired === 'no'}
                       onChange={handleInputChange}
-                      className="w-4 h-4 text-primary border-gray-300 focus:ring-primary"
+                      disabled={isPaseVisita}
+                      className="w-4 h-4 text-primary border-gray-300 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-60"
                     />
                     <span className="text-sm">No</span>
                   </label>
@@ -3196,8 +3307,9 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
                       value="yes"
                       checked={formData.requiereAcreditarTrabajadoresMyma === 'yes'}
                       onChange={handleInputChange}
-                      required
-                      className="w-4 h-4 text-primary border-gray-300 focus:ring-primary"
+                      required={!isPaseVisita}
+                      disabled={isPaseVisita}
+                      className="w-4 h-4 text-primary border-gray-300 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-60"
                     />
                     <span className="text-sm">Sí</span>
                   </label>
@@ -3208,7 +3320,8 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
                       value="no"
                       checked={formData.requiereAcreditarTrabajadoresMyma === 'no'}
                       onChange={handleInputChange}
-                      className="w-4 h-4 text-primary border-gray-300 focus:ring-primary"
+                      disabled={isPaseVisita}
+                      className="w-4 h-4 text-primary border-gray-300 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-60"
                     />
                     <span className="text-sm">No</span>
                   </label>
@@ -3333,8 +3446,9 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
                       value="yes"
                       checked={formData.requiereAcreditarContratista === 'yes'}
                       onChange={handleInputChange}
-                      required
-                      className="w-4 h-4 text-primary border-gray-300 focus:ring-primary"
+                      required={!isPaseVisita}
+                      disabled={isPaseVisita}
+                      className="w-4 h-4 text-primary border-gray-300 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-60"
                     />
                     <span className="text-sm">Sí</span>
                   </label>
@@ -3345,7 +3459,8 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
                       value="no"
                       checked={formData.requiereAcreditarContratista === 'no'}
                       onChange={handleInputChange}
-                      className="w-4 h-4 text-primary border-gray-300 focus:ring-primary"
+                      disabled={isPaseVisita}
+                      className="w-4 h-4 text-primary border-gray-300 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-60"
                     />
                     <span className="text-sm">No</span>
                   </label>
@@ -3508,8 +3623,9 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
                       value="yes"
                       checked={formData.requiereAcreditarTrabajadoresContratista === 'yes'}
                       onChange={handleInputChange}
-                      required
-                      className="w-4 h-4 text-primary border-gray-300 focus:ring-primary"
+                      required={!isPaseVisita}
+                      disabled={isPaseVisita}
+                      className="w-4 h-4 text-primary border-gray-300 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-60"
                     />
                     <span className="text-sm">Sí</span>
                   </label>
@@ -3520,7 +3636,8 @@ const FieldRequestForm: React.FC<FieldRequestFormProps> = ({
                       value="no"
                       checked={formData.requiereAcreditarTrabajadoresContratista === 'no'}
                       onChange={handleInputChange}
-                      className="w-4 h-4 text-primary border-gray-300 focus:ring-primary"
+                      disabled={isPaseVisita}
+                      className="w-4 h-4 text-primary border-gray-300 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-60"
                     />
                     <span className="text-sm">No</span>
                   </label>
