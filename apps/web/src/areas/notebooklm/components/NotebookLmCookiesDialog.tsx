@@ -100,6 +100,31 @@ const NotebookLmCookiesDialog: React.FC<NotebookLmCookiesDialogProps> = ({
     }
   };
 
+  const handleExtensionSynced = async () => {
+    try {
+      const status = await fetchNotebookLmCredentialsStatus();
+      if (!status.valid) {
+        setActiveAuthPayload(null);
+        setNotebooks([]);
+        setNotebooksError(
+          status.last_error ||
+            'La extension sincronizo cookies, pero el backend todavia no las valida para NotebookLM.'
+        );
+        return;
+      }
+
+      writeStoredNotebookLmAuthPayload(null);
+      setActiveAuthPayload(null);
+      await loadNotebooks(null);
+    } catch (err) {
+      setNotebooksError(
+        err instanceof Error
+          ? err.message
+          : 'No pudimos refrescar las credenciales despues de sincronizar la extension.'
+      );
+    }
+  };
+
   if (!open) return null;
 
   const handleValidate = async () => {
@@ -207,7 +232,7 @@ const NotebookLmCookiesDialog: React.FC<NotebookLmCookiesDialogProps> = ({
           Si no podes instalar la extension, abajo tenes la opcion manual: pega cookies en
           formato Netscape o storage JSON de Playwright.
         </p>
-        <NotebookLmExtensionPanel />
+        <NotebookLmExtensionPanel onSynced={handleExtensionSynced} />
         <hr className="my-4 border-gray-200" />
         <p className="mb-3 text-xs uppercase tracking-wide text-gray-500">
           Alternativa manual

@@ -534,8 +534,8 @@ app.post('/api/notebooklm/chat/validate-cookies', async (req, res) => {
 
 app.get('/api/notebooklm/chat/notebooks', async (req, res) => {
   await proxyAdendasRequest(req, res, {
-    apiBaseUrl: NOTEBOOK_LM_API_BASE_URL,
-    bearerToken: NOTEBOOK_LM_API_BEARER_TOKEN,
+    apiBaseUrl: NOTEBOOK_LM_LOCAL_API_BASE_URL,
+    bearerToken: NOTEBOOK_LM_LOCAL_API_BEARER_TOKEN,
     forwardedHeaders: ['X-NotebookLM-Auth'],
     forwardUserJwtFromAuthorization: true,
     upstreamPath: '/notebooks',

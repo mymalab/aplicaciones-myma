@@ -40,6 +40,10 @@ type ChromeRuntime = {
   lastError?: { message?: string };
 };
 
+interface NotebookLmExtensionPanelProps {
+  onSynced?: () => void | Promise<void>;
+}
+
 function getChromeRuntime(): ChromeRuntime | null {
   const w = window as unknown as { chrome?: { runtime?: ChromeRuntime } };
   if (!w.chrome || !w.chrome.runtime || typeof w.chrome.runtime.sendMessage !== 'function') {
@@ -92,7 +96,7 @@ function callExtension<T = unknown>(message: unknown, timeoutMs = 5000): Promise
   });
 }
 
-const NotebookLmExtensionPanel: React.FC = () => {
+const NotebookLmExtensionPanel: React.FC<NotebookLmExtensionPanelProps> = ({ onSynced }) => {
   const [installed, setInstalled] = useState<boolean | null>(null);
   const [version, setVersion] = useState<string>('');
   const [status, setStatus] = useState<ExtensionStatus | null>(null);
@@ -153,6 +157,7 @@ const NotebookLmExtensionPanel: React.FC = () => {
         setInfo('Extension configurada.');
         if (alsoSync) {
           await callExtension({ type: 'sync_now' });
+          await onSynced?.();
           setInfo('Extension configurada y primer sync ejecutado.');
         }
         await refreshStatus();
@@ -162,7 +167,7 @@ const NotebookLmExtensionPanel: React.FC = () => {
         setBusy(false);
       }
     },
-    [refreshStatus],
+    [onSynced, refreshStatus],
   );
 
   if (installed === null) {

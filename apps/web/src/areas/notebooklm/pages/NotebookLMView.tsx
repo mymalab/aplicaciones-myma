@@ -1611,7 +1611,11 @@ const NotebookLMView: React.FC = () => {
                   </div>
                 </div>
 
-                <NotebookLmExtensionPanel />
+                <NotebookLmExtensionPanel
+                  onSynced={async () => {
+                    await refreshNotebookAuthStatus();
+                  }}
+                />
 
                 <hr className="my-4 border-gray-200" />
                 <p className="mb-3 text-xs uppercase tracking-wide text-gray-500">
