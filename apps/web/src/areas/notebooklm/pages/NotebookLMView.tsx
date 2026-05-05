@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import NotebookLmAuthBanner from '../components/NotebookLmAuthBanner';
+import NotebookLmExtensionPanel from '../components/NotebookLmExtensionPanel';
 import {
   createAndLoadNotebookFiltered,
   deleteNotebookLmCredentials,
@@ -1604,11 +1605,18 @@ const NotebookLMView: React.FC = () => {
                       Cookies de la cuenta del usuario
                     </h2>
                     <p className="mt-1 text-sm text-[#616f89]">
-                      Pega cookies de NotebookLM/Google, validalas y se guardaran en tu cuenta
-                      MyMA para reutilizarlas hasta que las reemplaces o las elimines.
+                      Recomendado: usa la extension de Chrome para sincronizar cookies sin
+                      pegar nada. Si no podes instalarla, abajo queda la opcion manual.
                     </p>
                   </div>
                 </div>
+
+                <NotebookLmExtensionPanel />
+
+                <hr className="my-4 border-gray-200" />
+                <p className="mb-3 text-xs uppercase tracking-wide text-gray-500">
+                  Alternativa manual
+                </p>
 
                 <label
                   className="block text-sm font-semibold text-gray-700"
