@@ -65,7 +65,8 @@ type DomPollingStatus =
   | 'uploading'
   | 'success'
   | 'partial_success'
-  | 'failed';
+  | 'failed'
+  | 'auth_required';
 
 interface PendingNotebookUpload {
   notebookName: string;
@@ -600,7 +601,7 @@ const NotebookLMView: React.FC = () => {
 
   const isNotebookUploadRunning =
     domPollingMode === 'uploading' &&
-    !['success', 'partial_success', 'failed'].includes(domStatus);
+    !['success', 'partial_success', 'failed', 'auth_required'].includes(domStatus);
 
   const shouldShowNotebookUploadProgress =
     isSubmittingNotebook ||
@@ -611,6 +612,7 @@ const NotebookLMView: React.FC = () => {
     domStatus === 'uploading' ||
     domStatus === 'success' ||
     domStatus === 'partial_success' ||
+    domStatus === 'auth_required' ||
     (domStatus === 'failed' &&
       (domProgress?.progress_stage === 'uploading' ||
         domProgress?.progress_stage === 'creating_notebook' ||
@@ -644,7 +646,7 @@ const NotebookLMView: React.FC = () => {
     );
   }, [domDocuments, retryDocumentIds]);
   const hasCompletedNotebookUploadAttempt =
-    ['success', 'partial_success', 'failed'].includes(domStatus) &&
+    ['success', 'partial_success', 'failed', 'auth_required'].includes(domStatus) &&
     domPollingMode !== 'uploading' &&
     !isNotebookUploadRunning &&
     !isSubmittingNotebook &&
@@ -1212,14 +1214,20 @@ const NotebookLMView: React.FC = () => {
         mergeDomDocumentsWithServerProgress(current, incomingDocuments)
       );
       setDomStatus(
-        ['queued', 'listed', 'uploading', 'failed', 'success', 'partial_success'].includes(
-          normalizedStatus
-        )
+        [
+          'queued',
+          'listed',
+          'uploading',
+          'failed',
+          'auth_required',
+          'success',
+          'partial_success',
+        ].includes(normalizedStatus)
           ? (normalizedStatus as DomPollingStatus)
           : 'running'
       );
 
-      if (normalizedStatus === 'failed') {
+      if (normalizedStatus === 'failed' || normalizedStatus === 'auth_required') {
         const retryErrorMessage =
           refreshedStatus.error_message || 'No pudimos completar el reintento de carga.';
         setErrorMessage(retryErrorMessage);
@@ -1361,7 +1369,7 @@ const NotebookLMView: React.FC = () => {
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
     const terminalStatuses =
       domPollingMode === 'uploading'
-        ? new Set(['success', 'partial_success', 'failed'])
+        ? new Set(['success', 'partial_success', 'failed', 'auth_required'])
         : new Set(['listed', 'failed']);
 
     const pollStatus = async () => {
@@ -1391,6 +1399,7 @@ const NotebookLMView: React.FC = () => {
           normalizedStatus === 'listed' ||
           normalizedStatus === 'uploading' ||
           normalizedStatus === 'failed' ||
+          normalizedStatus === 'auth_required' ||
           normalizedStatus === 'success' ||
           normalizedStatus === 'partial_success'
         ) {
@@ -1401,7 +1410,10 @@ const NotebookLMView: React.FC = () => {
           setDomStatus('running');
         }
 
-        if (normalizedStatus === 'failed' && nextStatus.error_message) {
+        if (
+          (normalizedStatus === 'failed' || normalizedStatus === 'auth_required') &&
+          nextStatus.error_message
+        ) {
           if (domPollingMode === 'uploading') {
             setErrorMessage(nextStatus.error_message);
           } else {
@@ -1605,8 +1617,9 @@ const NotebookLMView: React.FC = () => {
                       Cookies de la cuenta del usuario
                     </h2>
                     <p className="mt-1 text-sm text-[#616f89]">
-                      Recomendado: usa la extension de Chrome para sincronizar cookies sin
-                      pegar nada. Si no podes instalarla, abajo queda la opcion manual.
+                      Recomendado: usa la extension de Chrome en el mismo perfil donde NotebookLM
+                      funciona. Debe sincronizar cookies de NotebookLM y de la cuenta Google,
+                      incluyendo SID de .google.com.
                     </p>
                   </div>
                 </div>
@@ -2255,7 +2268,9 @@ const NotebookLMView: React.FC = () => {
                         <span className="material-symbols-outlined text-base">refresh</span>
                         {isRetryingNotebookUpload
                           ? 'Reintentando...'
-                          : `Reintentar fallidos (${retryDocumentsCount})`}
+                          : shouldShowManualRetryDownload
+                            ? `Reintentar fallidos (${retryDocumentsCount})`
+                            : `Reintentar pendientes (${retryDocumentsCount})`}
                       </button>
                       {shouldShowManualRetryDownload && (
                         <button

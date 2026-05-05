@@ -228,9 +228,9 @@ const NotebookLmCookiesDialog: React.FC<NotebookLmCookiesDialogProps> = ({
           </button>
         </div>
         <p className="mb-3 text-sm text-gray-600">
-          Recomendado: usa la extension de Chrome para sincronizar cookies sin pegar nada.
-          Si no podes instalar la extension, abajo tenes la opcion manual: pega cookies en
-          formato Netscape o storage JSON de Playwright.
+          Recomendado: usa la extension de Chrome en el mismo perfil donde NotebookLM funciona.
+          Debe sincronizar cookies de NotebookLM y de la cuenta Google, incluyendo SID de
+          .google.com. Si no podes instalar la extension, abajo tenes la opcion manual.
         </p>
         <NotebookLmExtensionPanel onSynced={handleExtensionSynced} />
         <hr className="my-4 border-gray-200" />

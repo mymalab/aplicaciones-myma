@@ -538,7 +538,7 @@ app.get('/api/notebooklm/chat/notebooks', async (req, res) => {
     bearerToken: NOTEBOOK_LM_LOCAL_API_BEARER_TOKEN,
     forwardedHeaders: ['X-NotebookLM-Auth'],
     forwardUserJwtFromAuthorization: true,
-    upstreamPath: '/notebooks',
+    upstreamPath: '/notebooks/',
     method: 'GET',
   });
 });

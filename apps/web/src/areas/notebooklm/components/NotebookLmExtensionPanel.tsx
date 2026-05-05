@@ -14,7 +14,7 @@ const EXTENSION_BEARER =
   (import.meta.env.VITE_NOTEBOOK_LM_LOCAL_API_BEARER_TOKEN as string | undefined)?.trim() || '';
 
 const EXTENSION_DEFAULT_INTERVAL_MIN = Number(
-  import.meta.env.VITE_NOTEBOOK_LM_EXTENSION_INTERVAL_MIN || 10,
+  import.meta.env.VITE_NOTEBOOK_LM_EXTENSION_INTERVAL_MIN || 5,
 );
 
 const EXTENSION_INSTALL_DOC_URL =
@@ -29,6 +29,16 @@ interface ExtensionStatus {
   hasBearer?: boolean;
   hasRefreshToken?: boolean;
   accessTokenExpiresAt?: number;
+  lastCookieSummary?: {
+    count?: number;
+    domains?: string[];
+    auth_cookie_names?: string[];
+    has_sid?: boolean;
+    has_secure_1psid?: boolean;
+    has_secure_3psid?: boolean;
+    has_osid?: boolean;
+    has_secure_osid?: boolean;
+  } | null;
 }
 
 type ChromeRuntime = {
@@ -151,7 +161,7 @@ const NotebookLmExtensionPanel: React.FC<NotebookLmExtensionPanelProps> = ({ onS
             refreshToken,
             intervalMin: Number.isFinite(EXTENSION_DEFAULT_INTERVAL_MIN)
               ? EXTENSION_DEFAULT_INTERVAL_MIN
-              : 10,
+              : 5,
           },
         });
         setInfo('Extension configurada.');
@@ -183,8 +193,8 @@ const NotebookLmExtensionPanel: React.FC<NotebookLmExtensionPanelProps> = ({ onS
       <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
         <p className="font-semibold">Extension Myma NotebookLM Cookie Sync no detectada</p>
         <p className="mt-1 leading-6">
-          Instalala una sola vez para que el browser sincronice cookies automaticamente y no
-          tengas que pegar nada cada hora.
+          Instalala en el mismo perfil de Chrome donde usas NotebookLM. La autenticacion necesita
+          cookies de NotebookLM y de la cuenta Google, incluyendo SID de .google.com.
         </p>
         <a
           href={EXTENSION_INSTALL_DOC_URL}
@@ -206,6 +216,8 @@ const NotebookLmExtensionPanel: React.FC<NotebookLmExtensionPanelProps> = ({ onS
     ? new Date(status.accessTokenExpiresAt * 1000).toLocaleString()
     : '—';
 
+  const cookieSummary = status?.lastCookieSummary || null;
+
   return (
     <div className="mt-4 rounded-lg border border-teal-200 bg-teal-50 p-4 text-sm text-teal-900">
       <p className="font-semibold">
@@ -218,6 +230,14 @@ const NotebookLmExtensionPanel: React.FC<NotebookLmExtensionPanelProps> = ({ onS
         <li>Refresh token guardado: {status?.hasRefreshToken ? 'si' : 'no'}</li>
         <li>Ultimo sync: {lastSyncLabel}</li>
         <li>Access token expira: {expiresAtLabel}</li>
+        {cookieSummary && (
+          <li>
+            Cookies capturadas: {cookieSummary.count || 0}; auth:{' '}
+            {(cookieSummary.auth_cookie_names || []).join(', ') || 'ninguna'}; dominios:{' '}
+            {(cookieSummary.domains || []).slice(0, 6).join(', ') || 'ninguno'}; OSID:{' '}
+            {cookieSummary.has_osid || cookieSummary.has_secure_osid ? 'si' : 'no'}
+          </li>
+        )}
         {status?.lastError && (
           <li className="text-red-700">Ultimo error: {status.lastError}</li>
         )}
