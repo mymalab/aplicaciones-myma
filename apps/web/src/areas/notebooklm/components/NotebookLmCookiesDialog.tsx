@@ -20,6 +20,7 @@ import {
   writeStoredSelectedNotebook,
 } from '../services/notebookLmCookieStorage';
 import type { StoredSelectedNotebook } from '../services/notebookLmCookieStorage';
+import NotebookLmExtensionPanel from './NotebookLmExtensionPanel';
 
 interface NotebookLmCookiesDialogProps {
   open: boolean;
@@ -202,8 +203,14 @@ const NotebookLmCookiesDialog: React.FC<NotebookLmCookiesDialogProps> = ({
           </button>
         </div>
         <p className="mb-3 text-sm text-gray-600">
-          Pega cookies en formato Netscape o storage JSON de Playwright. Se validan y se
-          guardan en tu cuenta MyMA para reutilizarlas en NotebookLM.
+          Recomendado: usa la extension de Chrome para sincronizar cookies sin pegar nada.
+          Si no podes instalar la extension, abajo tenes la opcion manual: pega cookies en
+          formato Netscape o storage JSON de Playwright.
+        </p>
+        <NotebookLmExtensionPanel />
+        <hr className="my-4 border-gray-200" />
+        <p className="mb-3 text-xs uppercase tracking-wide text-gray-500">
+          Alternativa manual
         </p>
         <textarea
           value={input}
